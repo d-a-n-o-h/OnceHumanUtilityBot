@@ -66,7 +66,7 @@ class TimerCog(commands.Cog):
         minute = time_now.minute
         if self.reset_alert.next_iteration is not None:
             next_time_timestamp = datetime.datetime.timestamp(self.reset_alert.next_iteration)
-        await interaction.response.send_message(f"It's `{hour}:{minute:02d} UTC`.\nChests respawn at `02:00`, `06:00`, `10:00`, `14:00`, `18:00`, and `22:00` UTC.\n\nNext respawn <t:{int(next_time_timestamp)}:R>.", ephemeral=True, delete_after=60)
+        await interaction.response.send_message(f"It's `{hour}:{minute:02d} UTC`.\nChests respawn at `02:00`, `06:00`, `10:00`, `14:00`, `18:00`, and `22:00` UTC.\n\nNext respawn <t:{int(next_time_timestamp)}:F>.", ephemeral=True, delete_after=60)
 
 
 async def setup(bot: commands.Bot):
