@@ -26,7 +26,6 @@ else:
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.guilds = True
 
 class OHTimerBot(commands.Bot):
     def __init__(self, *args, testing_guild_id: Optional[int] = None,  **kwargs):
