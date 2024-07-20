@@ -32,7 +32,6 @@ class CommandsCog(commands.Cog):
                     "channel_id": output_channel.id
                 }
                 await cursor.execute("INSERT OR IGNORE INTO channels (guild_id,channel_id) VALUES (:guild_id, :channel_id);", data)
-                await conn.commit()
                 await cursor.execute("UPDATE channels SET channel_id=:channel_id WHERE guild_id=:guild_id;", data)
                 await conn.commit()
         await interaction.response.send_message(f"Your output channel has been set to {output_channel.mention}!", ephemeral=True, delete_after=30)
