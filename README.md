@@ -7,7 +7,7 @@ Permissions of this strong copyleft license are conditioned on making available 
 
   - Set the text channel that the alert will be sent.
   
-  - [OPTIONAL] Include a role to be mentioned in the alerts.
+  - [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention (default behavior).
 
 `/next`:
 
