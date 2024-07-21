@@ -26,6 +26,7 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(role_to_mention="The role you want mentioned in the alert. Blank = None")
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.guild_install()
     async def output_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, role_to_mention: Optional[discord.Role] = None):
         async with asqlite.connect(db_name) as conn:
             async with conn.cursor() as cursor:
@@ -34,16 +35,23 @@ class CommandsCog(commands.Cog):
                     "channel_id": output_channel.id,
                 }
                 await cursor.execute("INSERT OR IGNORE INTO channels (guild_id,channel_id) VALUES (:guild_id, :channel_id);", data)
+                await conn.commit()
                 await cursor.execute("UPDATE channels SET channel_id=:channel_id WHERE guild_id=:guild_id;", data)
+                await conn.commit()
                 if role_to_mention is not None:
                     data = {"guild_id": interaction.guild_id,"role_id": role_to_mention.id}
                     await cursor.execute("UPDATE channels SET role_id=:role_id WHERE guild_id=:guild_id;", data)
+                    await conn.commit()
                 elif role_to_mention is None:
                     data = {"guild_id": interaction.guild_id,"role_id": None}
                     await cursor.execute("UPDATE channels SET role_id=:role_id WHERE guild_id=:guild_id;", data)
-                await conn.commit()
-        await interaction.response.send_message(f"Your output channel has been set to {output_channel.mention}!\nThe role that will be mentioned is {role_to_mention.mention if role_to_mention else '`None`'}.", ephemeral=True, delete_after=30)
-        await output_channel.send("This channel is where respawn alerts will be sent!")
+                    await conn.commit()
+        if not output_channel.permissions_for(output_channel.guild.me).send_messages:
+            return await interaction.response.send_message(f"The bot is not able to send messages in the channel you have chosen, {output_channel.mention}.\nPlease edit the channel settings to allow the bot user or role to send messages there.", ephemeral=True, delete_after=300)
+        else:
+            await output_channel.send("This channel is where respawn alerts will be sent!")
+            await interaction.response.send_message(f"Your output channel has been set to {output_channel.mention}!\nThe role that will be mentioned is {role_to_mention.mention if role_to_mention else '`None`'}.", ephemeral=True, delete_after=30)
+        
 
 
 async def setup(bot: commands.Bot):
@@ -52,5 +60,5 @@ async def setup(bot: commands.Bot):
 
 
 async def teardown(bot: commands.Bot):
-    await bot.remove_cog(CommandsCog(bot))  # type: ignore
+    await bot.remove_cog(CommandsCog(bot).qualified_name)
     print(f"{__name__[5:].upper()} unloaded")
