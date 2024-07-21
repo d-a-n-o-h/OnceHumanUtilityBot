@@ -42,16 +42,17 @@ class TimerCog(commands.Cog):
         print(f"Timer! {time_now}")
         async with asqlite.connect(db_name) as conn:
             async with conn.cursor() as cursor:
-                all_channels = await cursor.execute("SELECT channel_id FROM channels;")
+                all_channels = await cursor.execute("SELECT channel_id, role_id FROM channels;")
                 all_channels = await all_channels.fetchall()
                 for channel in all_channels:
                     cur_chan = self.bot.get_channel(channel[0])
                     if cur_chan and isinstance(cur_chan, discord.TextChannel):
+                        role_to_mention = cur_chan.guild.get_role(channel[1])
                         reset_embed = discord.Embed(color=discord.Color.blurple(),title="Once Human Gear/Weapon Crates Reset Announcement")
                         time_now = time_now.replace(minute=0, second=0, microsecond=0)
                         timestamp_now = datetime.datetime.timestamp(time_now)
                         reset_embed.add_field(name='', value=f"This is the <t:{int(timestamp_now)}:t> reset announcement.")
-                        await cur_chan.send(content="@here", embed=reset_embed)
+                        await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention else ''}", embed=reset_embed)
                     
 
     @reset_alert.before_loop
