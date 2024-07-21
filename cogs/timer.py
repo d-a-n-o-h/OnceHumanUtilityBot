@@ -10,12 +10,12 @@ from dotenv import dotenv_values
 
 utc = datetime.timezone.utc
 times = [
-        datetime.time(hour=2, minute=0, tzinfo=utc),
-        datetime.time(hour=6, minute=0, tzinfo=utc),
-        datetime.time(hour=10, minute=0, tzinfo=utc),
-        datetime.time(hour=14, minute=0, tzinfo=utc),
-        datetime.time(hour=18, minute=0, tzinfo=utc),
-        datetime.time(hour=22, minute=0, tzinfo=utc),
+        datetime.time(hour=4, minute=0, tzinfo=utc),
+        datetime.time(hour=8, minute=0, tzinfo=utc),
+        datetime.time(hour=12, minute=0, tzinfo=utc),
+        datetime.time(hour=16, minute=0, tzinfo=utc),
+        datetime.time(hour=20, minute=0, tzinfo=utc),
+        datetime.time(hour=0, minute=0, tzinfo=utc),
     ]
 config = dotenv_values(".env")
 if config["DATABASE"]:
@@ -67,7 +67,7 @@ class TimerCog(commands.Cog):
         minute = time_now.minute
         if self.reset_alert.next_iteration is not None:
             next_time_timestamp = datetime.datetime.timestamp(self.reset_alert.next_iteration)
-        await interaction.response.send_message(f"It's `{hour}:{minute:02d} UTC`.\nChests respawn at `02:00`, `06:00`, `10:00`, `14:00`, `18:00`, and `22:00` UTC.\n\nNext respawn <t:{int(next_time_timestamp)}:F>.", ephemeral=True, delete_after=60)
+        await interaction.response.send_message(f"It's `{hour:02d}:{minute:02d} UTC`.\nChests respawn at `02:00`, `06:00`, `10:00`, `14:00`, `18:00`, and `22:00` UTC.\n\nNext respawn <t:{int(next_time_timestamp)}:F>.", ephemeral=True, delete_after=60)
 
 
 async def setup(bot: commands.Bot):
