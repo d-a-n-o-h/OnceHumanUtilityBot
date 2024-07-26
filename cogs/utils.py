@@ -11,14 +11,21 @@ from discord import app_commands
 from discord.ext import commands
 from discord.ext.commands import ExtensionAlreadyLoaded
 from dotenv import dotenv_values
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from modals.channels import ReportingChannel
 
 
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
-if config["DATABASE"]:
-    db_name = config["DATABASE"]
+if config["DATABASE_STRING"]:
+    engine = create_async_engine(config["DATABASE_STRING"])
+elif config["DATABASE"]:
+    engine = create_async_engine(f"sqlite+asqlite:///{config['DATABASE']}")
 else:
-    print("Please set the DATABASE value in the .env file and restart the bot.")
+    print("Please set the DATABASE or DATABASE_STRING value in the .env file and restart the bot.")
     sys.exit(1)
 
 
@@ -88,18 +95,16 @@ class UtilsCog(commands.Cog):
         setup_cmd = await self.find_cmd(self.bot, cmd='setup')
         reset_embed.add_field(name='', value=f"Use {setup_cmd.mention} to change the channel or change/add a role to ping.", inline=False) # type: ignore
         reset_embed.set_footer(text="This alert was sent manually due to an error with the automation.")
-        async with asqlite.connect(db_name) as conn:
-            async with conn.cursor() as cursor:
-                all_channels = await cursor.execute("SELECT channel_id, role_id FROM channels;")
-                all_channels = await all_channels.fetchall()
+        async with engine.begin() as conn:
+            all_channels = await conn.execute(select(ReportingChannel.channel_id,ReportingChannel.role_id))
+            all_channels = all_channels.all()
+        await engine.dispose(close=True)
         for i, (channel_id, role_id) in enumerate(all_channels):
             cur_chan = self.bot.get_channel(channel_id)
             if not cur_chan:
-                async with asqlite.connect(db_name) as conn:
-                    async with conn.cursor() as cursor:
-                        data = {"channel_id": channel_id}
-                        await cursor.execute("DELETE FROM channels WHERE channel_id=:channel_id;", data)
-                        await conn.commit()
+                async with engine.begin() as conn:
+                    await conn.execute(delete(ReportingChannel).filter_by(channel_id=channel_id))
+                await engine.dispose(close=True)
                 continue
             if cur_chan.guild:
                 role_to_mention = cur_chan.guild.get_role(role_id)
@@ -122,18 +127,18 @@ class UtilsCog(commands.Cog):
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
     async def list_errors(self, interaction: discord.Interaction):
+        await interaction.response.defer()
         send_errors = 0
         view_errors = 0
         channel_set_errors = 0
         errors_string = ""
         all_channels_list = list()
         all_guilds_list = list()
-        async with asqlite.connect(db_name) as conn:
-            async with conn.cursor() as cursor:
-                all_channels = await cursor.execute("SELECT channel_id FROM channels;")
-                all_channels = await all_channels.fetchall()
-                all_guilds = await cursor.execute("SELECT guild_id FROM channels;")
-                all_guilds = await all_guilds.fetchall()
+        async with engine.begin() as conn:
+            all_channels = await conn.execute(select(ReportingChannel.channel_id))
+            all_channels = all_channels.all()
+            all_guilds = await conn.execute(select(ReportingChannel.guild_id))
+            all_guilds = all_guilds.all()
         for guild in all_guilds:
             all_guilds_list.append(guild[0])
         for channel in all_channels:
@@ -152,7 +157,7 @@ class UtilsCog(commands.Cog):
                 if not cur_chan.permissions_for(cur_chan.guild.me).view_channel:
                     view_errors += 1
                     errors_string += f"Can't view channel #{cur_chan.name} | guild\_id: `{cur_chan.guild.id}` ({self.fix_unicode(cur_chan.guild.name)}).\n" # type: ignore
-        await interaction.edit_original_response(content=f"Send errors: `{send_errors}`\nView errors: `{view_errors}`\nNo channel set: `{channel_set_errors}`\n")
+        await interaction.followup.send(content=f"Send errors: `{send_errors}`\nView errors: `{view_errors}`\nNo channel set: `{channel_set_errors}`\n")
                 
 
     @app_commands.command(name='reload', description='Reloads the cogs.')
@@ -174,7 +179,7 @@ class UtilsCog(commands.Cog):
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
     async def reloadall(self, interaction: discord.Interaction):
-        
+        await interaction.response.defer()
         for subdir, _, files in os.walk("cogs"):
             files = [
                 file for file in files if file.endswith(".py") and "template" not in file
@@ -184,18 +189,18 @@ class UtilsCog(commands.Cog):
                     try:
                         sub = subdir.split("cogs\\")[1]
                         await self.bot.load_extension(f"cogs.{sub}.{file[:-3]}")
-                        await interaction.response.send_message(f"Loaded `cogs.{sub}.{file[:-3]}` cog.", ephemeral=True, delete_after=10)
+                        await interaction.followup.send(content=f"Loaded `cogs.{sub}.{file[:-3]}` cog.")
                     except ExtensionAlreadyLoaded:
                         sub = subdir.split("cogs\\")[1]
                         await self.bot.reload_extension(f"cogs.{sub}.{file[:-3]}")
-                        await interaction.response.send_message(f"Reloaded `cogs.{sub}.{file[:-3]}` cog.", ephemeral=True, delete_after=10)
+                        await interaction.followup.send(content=f"Reloaded `cogs.{sub}.{file[:-3]}` cog.")
                 else:
                     try:
                         await self.bot.load_extension(f"{subdir}.{file[:-3]}")
-                        await interaction.response.send_message(f"Loaded `{subdir}.{file[:-3]}` cog.", ephemeral=True, delete_after=10)
+                        await interaction.followup.send(content=f"Loaded `{subdir}.{file[:-3]}` cog.")
                     except ExtensionAlreadyLoaded:
                         await self.bot.reload_extension(f"{subdir}.{file[:-3]}")
-                        await interaction.response.send_message(f"Reloaded `{subdir}.{file[:-3]}` cog.", ephemeral=True, delete_after=10)
+                        await interaction.followup.send(content=f"Reloaded `{subdir}.{file[:-3]}` cog.")
 
 
     @app_commands.command(name='load', description='Loads the specified cog.')
