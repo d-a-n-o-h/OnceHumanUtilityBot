@@ -21,8 +21,8 @@ async def migrate():
         all_rows = await conn.execute(select(ReportingChannel.guild_id,ReportingChannel.channel_id,ReportingChannel.role_id))
         all_rows = all_rows.all()
     await old_engine.dispose(close=True)
-    for row in all_rows:   
-        async with engine.begin() as conn:
+    async with engine.begin() as conn:
+        for row in all_rows:   
             print(row)
             cur_strikes = await conn.execute(select(GuildBlacklist.strikes).filter_by(guild_id=row.guild_id))
             cur_strikes = cur_strikes.scalar()
