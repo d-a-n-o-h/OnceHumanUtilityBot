@@ -1,10 +1,8 @@
 import asyncio
 import datetime
-import os
 import sys
 from typing import Literal, Optional
 
-import asqlite
 import discord
 from discord.ext import commands
 from dotenv import dotenv_values
@@ -34,10 +32,10 @@ class OHTimerBot(commands.Bot):
             self.testing_guild_id = int(config["TESTING_GUILD_ID"])
         else:
             self.testing_guild = None
-        if config["DATABASE"]:
-            self.db_name = config["DATABASE"]
+        if config["DATABASE_STRING"]:
+            self.db_string = config["DATABASE_STRING"]
         else:
-            print("Please set the DATABASE value in the .env file and restart the bot.")
+            print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
             sys.exit(1)
 
     async def setup_hook(self) -> None:
@@ -47,16 +45,6 @@ class OHTimerBot(commands.Bot):
             except Exception as e:
                 print(f"Failed to load extension {extension}.")
 
-        if not os.path.exists(self.db_name):
-            with open(self.db_name, 'w') as f:
-                f.write("")
-            async with asqlite.connect(self.db_name) as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.executescript("""
-                                            BEGIN;
-                                            CREATE TABLE IF NOT EXISTS channels (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id BIGINT UNIQUE, channel_id BIGINT UNIQUE);
-                                            COMMIT;
-                                            """)
         if self.testing_guild_id:
             guild = discord.Object(self.testing_guild_id)
             await self.tree.sync(guild=guild)

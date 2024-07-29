@@ -9,9 +9,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import delete, select # type: ignore
+from sqlalchemy.dialects.postgresql import insert # type: ignore
+from sqlalchemy.ext.asyncio import create_async_engine # type: ignore
 
 from modals.channels import ReportingChannel
 
@@ -21,8 +21,6 @@ config = dotenv_values(".env")
 
 if config["DATABASE_STRING"]:
     engine = create_async_engine(config["DATABASE_STRING"])
-elif config["DATABASE"]:
-    engine = create_async_engine(f"sqlite+asqlite:///{config['DATABASE']}")
 else:
     print("Please set the DATABASE or DATABASE_STRING value in the .env file and restart the bot.")
     sys.exit(1)
@@ -62,7 +60,7 @@ class TimerCog(commands.Cog):
                 timestamp_now = datetime.datetime.timestamp(time_now)
                 reset_embed.add_field(name='', value=f"This is the <t:{int(timestamp_now)}:t> reset announcement.")
                 setup_cmd = await self.find_cmd(self.bot, cmd='setup')
-                reset_embed.add_field(name='', value=f"Use {setup_cmd.mention} to change the channel or change/add a role to ping.", inline=False) # type: ignore
+                # reset_embed.add_field(name='', value=f"Use {setup_cmd.mention} to change the channel or change/add a role to ping.", inline=False) # type: ignore
                 reset_embed.set_footer(text="Log out to the main menu and log back in to see the reset chests.")
                 async with engine.begin() as conn:
                     all_channels = await conn.execute(select(ReportingChannel.channel_id, ReportingChannel.role_id))
@@ -100,6 +98,7 @@ class TimerCog(commands.Cog):
 
 
     @app_commands.command(name='next', description='Returns the current UTC time and the next respawn timer.')
+    @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
     @app_commands.guild_install()
     async def what_time_is_it(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)

@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import sys
 from typing import Optional
@@ -6,9 +7,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import delete, select # type: ignore
+from sqlalchemy.dialects.postgresql import insert # type: ignore
+from sqlalchemy.ext.asyncio import create_async_engine # type: ignore
 
 from modals.channels import ReportingChannel
 
@@ -17,10 +18,8 @@ config = dotenv_values(".env")
 
 if config["DATABASE_STRING"]:
     engine = create_async_engine(config["DATABASE_STRING"])
-elif config["DATABASE"]:
-    engine = create_async_engine(f"sqlite+asqlite:///{config['DATABASE']}")
 else:
-    print("Please set the DATABASE or DATABASE_STRING value in the .env file and restart the bot.")
+    print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
     sys.exit(1)
 
 class CommandsCog(commands.Cog):
@@ -43,18 +42,28 @@ class CommandsCog(commands.Cog):
                 if child.name.lower() == cmd.lower():
                     return child
 
-    #async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-    #    if isinstance(error, app_commands.CommandOnCooldown):
-    #        if not interaction.response.is_done():
-    #            return await interaction.response.send_message(f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", ephemeral=True, delete_after=error.retry_after)
-    #    else:
-    #        if not interaction.response.is_done():
-    #            return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
+    async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            if not interaction.response.is_done():
+                return await interaction.response.send_message(f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", ephemeral=True, delete_after=error.retry_after)
+            else:
+                print(error)
+                msg = await interaction.followup.send(content=f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", wait=True)
+                await asyncio.sleep(error.retry_after)
+                await msg.delete()
+        else:
+            if not interaction.response.is_done():
+                return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
+            else:
+                print(error)
+                msg = await interaction.followup.send(content=f"There was an error with your request:\n`{error}`", wait=True)
+                await asyncio.sleep(60)
+                await msg.delete()
 
 
     @app_commands.command(name='test_alert', description='Sends a test alert to your channel.')
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
     @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
     async def test_alert_command(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -82,7 +91,7 @@ class CommandsCog(commands.Cog):
     
     @app_commands.command(name='check', description='Shows which channel/role the bot will send alerts to.')
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
     @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
     async def check_info(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -106,7 +115,7 @@ class CommandsCog(commands.Cog):
     
     @app_commands.command(name='remove_data', description='Remove your guild and channel ID from the database.')
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
     @app_commands.checks.cooldown(1, 3600, key=lambda i: (i.guild_id, i.user.id))
     async def remove_data(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
@@ -120,7 +129,7 @@ class CommandsCog(commands.Cog):
     @app_commands.describe(output_channel="The text channel you want notifications in.")
     @app_commands.describe(role_to_mention="The role you want mentioned in the alert. Blank = None")
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
     async def output_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, role_to_mention: Optional[discord.Role] = None):
         await interaction.response.defer(ephemeral=True)
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel:

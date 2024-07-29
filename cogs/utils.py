@@ -1,31 +1,27 @@
 import asyncio
 import datetime
-import os
 import sys
 import unicodedata
 from typing import Literal, Optional
 
-import asqlite
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.ext.commands import ExtensionAlreadyLoaded
 from dotenv import dotenv_values
-from sqlalchemy import delete, select
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import delete, select # type: ignore
+from sqlalchemy.dialects.postgresql import insert # type: ignore
+from sqlalchemy.ext.asyncio import create_async_engine # type: ignore
 
 from modals.channels import ReportingChannel
+from modals.guild_blacklist import GuildBlacklist
 
 
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
 if config["DATABASE_STRING"]:
     engine = create_async_engine(config["DATABASE_STRING"])
-elif config["DATABASE"]:
-    engine = create_async_engine(f"sqlite+asqlite:///{config['DATABASE']}")
 else:
-    print("Please set the DATABASE or DATABASE_STRING value in the .env file and restart the bot.")
+    print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
     sys.exit(1)
 
 
@@ -58,24 +54,52 @@ class UtilsCog(commands.Cog):
                 if child.name.lower() == cmd.lower():
                     return child
     
-    async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        if isinstance(error, app_commands.CommandOnCooldown):
-            if not interaction.response.is_done():
-                return await interaction.response.send_message(f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", ephemeral=True, delete_after=error.retry_after)
-            else:
-                print(error)
-        else:
-            if not interaction.response.is_done():
-                return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
-            else:
-                print(error)
+    # async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+    #     if isinstance(error, app_commands.CommandOnCooldown):
+    #         if not interaction.response.is_done():
+    #             return await interaction.response.send_message(f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", ephemeral=True, delete_after=error.retry_after)
+    #         else:
+    #             print(error)
+    #             msg = await interaction.followup.send(content=f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", wait=True)
+    #             await asyncio.sleep(error.retry_after)
+    #             await msg.delete()
+    #     else:
+    #         if not interaction.response.is_done():
+    #             return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
+    #         else:
+    #             print(error)
+    #             msg = await interaction.followup.send(content=f"There was an error with your request:\n`{error}`", wait=True)
+    #             await asyncio.sleep(60)
+    #             await msg.delete()
 
     @app_commands.command(name='utility', description='Utility command for testing.')
     @app_commands.guild_install()
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
     async def utility_command(self, interaction: discord.Interaction):
-        await interaction.response.send_message("Utility")
+        pass
+
+
+    @app_commands.command(name='bl_setup', description='Setup the guild_blacklist database.')
+    @app_commands.guild_install()
+    @app_commands.check(me_only)
+    @app_commands.guilds(MY_GUILD_ID)
+    async def bl_setup(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        guilds_added = 0
+        async with engine.begin() as conn:
+            for guild in self.bot.guilds:
+                cur_strikes = await conn.execute(select(GuildBlacklist.strikes).filter_by(guild_id=interaction.guild_id))
+                cur_strikes = cur_strikes.scalar()
+                if cur_strikes is not None:
+                    continue
+                insert_stmt = insert(GuildBlacklist).values(guild_id=interaction.guild_id)
+                update = insert_stmt.on_conflict_do_nothing(constraint='guild_blacklist_unique_guild_id')
+                await conn.execute(update)
+                guilds_added += 1
+        await engine.dispose(close=True)
+        await interaction.edit_original_response(content=f"{guilds_added} guilds added.")
+
 
     @app_commands.command(name='manual_send', description='Manually send out an alert to subscribed channels.')
     @app_commands.guild_install()
@@ -143,7 +167,6 @@ class UtilsCog(commands.Cog):
             all_guilds_list.append(guild[0])
         for channel in all_channels:
             all_channels_list.append(channel[0])
-        await interaction.response.send_message("Problems found...")
         for guild in self.bot.guilds:
             if guild.id not in all_guilds_list:
                 channel_set_errors += 1
@@ -161,17 +184,19 @@ class UtilsCog(commands.Cog):
                 
 
     @app_commands.command(name='reload', description='Reloads the cogs.')
-    @app_commands.describe(cog="The cog to be reloaded.")
+    @app_commands.describe(extension="The extension to be reloaded.")
     @app_commands.guild_install()
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
-    async def reload(self, interaction: discord.Interaction, cog: str):
-        if os.path.exists(f"cogs/{cog.lower()}.py"):
+    async def reload(self, interaction: discord.Interaction, extension: str):
+        if "cogs."+extension.lower() in self.bot.initial_extensions:
             try:
-                await self.bot.reload_extension(f"cogs.{cog.lower()}")
-                await interaction.response.send_message(f"Reloaded `{cog.upper()}` cog.", ephemeral=True, delete_after=10)
+                await self.bot.reload_extension("cogs."+extension.lower())
+                await interaction.response.send_message(f"Reloaded `{extension.upper()}` extension.", ephemeral=True, delete_after=10)
             except Exception as e:
-                await interaction.response.send_message(f"Error reloading `{cog.upper()}` cog.: {e}", ephemeral=True)
+                await interaction.response.send_message(f"Error reloading `{extension.upper()}` extension: {e}", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"{self.bot.initial_extensions} || {self.__cog_name__}")
 
 
     @app_commands.command(name='reloadall', description='Reloads all the cogs, starts cogs that aren\'t loaded.')
@@ -179,41 +204,31 @@ class UtilsCog(commands.Cog):
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
     async def reloadall(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        for subdir, _, files in os.walk("cogs"):
-            files = [
-                file for file in files if file.endswith(".py") and "template" not in file
-            ]
-            for file in files:
-                if len(subdir.split("cogs\\")) >= 2:
-                    try:
-                        sub = subdir.split("cogs\\")[1]
-                        await self.bot.load_extension(f"cogs.{sub}.{file[:-3]}")
-                        await interaction.followup.send(content=f"Loaded `cogs.{sub}.{file[:-3]}` cog.")
-                    except ExtensionAlreadyLoaded:
-                        sub = subdir.split("cogs\\")[1]
-                        await self.bot.reload_extension(f"cogs.{sub}.{file[:-3]}")
-                        await interaction.followup.send(content=f"Reloaded `cogs.{sub}.{file[:-3]}` cog.")
-                else:
-                    try:
-                        await self.bot.load_extension(f"{subdir}.{file[:-3]}")
-                        await interaction.followup.send(content=f"Loaded `{subdir}.{file[:-3]}` cog.")
-                    except ExtensionAlreadyLoaded:
-                        await self.bot.reload_extension(f"{subdir}.{file[:-3]}")
-                        await interaction.followup.send(content=f"Reloaded `{subdir}.{file[:-3]}` cog.")
+        await interaction.response.defer(ephemeral=True)
+        successful_reload = []
+        for extension in self.bot.initial_extensions:
+            try:
+                await self.bot.reload_extension(extension)
+                successful_reload.append(extension.upper()[5:])
+            except Exception as e:
+                await interaction.followup.send(content=f"Error reloading `{extension.upper()[5:]}` extension: {e}")
+                return print(f"Failed to load extension {extension.upper()[5:]}.\n{e}")
+        msg = await interaction.followup.send(content=f"Reloaded: `{', '.join(successful_reload)}` extensions.", wait=True)
+        await msg.delete(delay=15)
+        
 
 
-    @app_commands.command(name='load', description='Loads the specified cog.')
-    @app_commands.describe(cog="The cog to be loaded.")
+    @app_commands.command(name='load', description='Loads the specified extension.')
+    @app_commands.describe(extension="The extension to be loaded.")
     @app_commands.guild_install()
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
-    async def load(self, interaction: discord.Interaction, cog: str):
+    async def load(self, interaction: discord.Interaction, extension: str):
         try:
-            await self.bot.load_extension(f"cogs.{cog}")
-            await interaction.response.send_message(f"Loaded `{cog.upper()}` cog.", ephemeral=True, delete_after=10)
+            await self.bot.load_extension(f"cogs.{extension}")
+            await interaction.response.send_message(f"Loaded `{extension.upper()}` extension.", ephemeral=True, delete_after=10)
         except Exception as e:
-            await interaction.response.send_message(f"Error loading `{cog.upper()}` cog.\n{e}", ephemeral=True)
+            await interaction.response.send_message(f"Error loading `{extension.upper()}` extension.\n{e}", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
