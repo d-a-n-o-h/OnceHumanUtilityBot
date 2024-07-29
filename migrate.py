@@ -1,10 +1,12 @@
 import asyncio
 
 from dotenv import dotenv_values
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import select  # type: ignore
+from sqlalchemy.dialects.postgresql import insert  # type: ignore
+from sqlalchemy.ext.asyncio import create_async_engine  # type: ignore
+
 from modals.channels import ReportingChannel
+from modals.guild_blacklist import GuildBlacklist
 
 config = dotenv_values(".env")
 
@@ -22,8 +24,15 @@ async def migrate():
     for row in all_rows:   
         async with engine.begin() as conn:
             print(row)
+            cur_strikes = await conn.execute(select(GuildBlacklist.strikes).filter_by(guild_id=row.guild_id))
+            cur_strikes = cur_strikes.scalar()
+            if cur_strikes is not None:
+                continue
+            insert_stmt = insert(GuildBlacklist).values(guild_id=row.guild_id)
+            update = insert_stmt.on_conflict_do_nothing(constraint='guild_blacklist_unique_guild_id')
+            await conn.execute(update)
             insert_stmt = insert(ReportingChannel).values(guild_id=row.guild_id,channel_id=row.channel_id,role_id=row.role_id)
-            update = insert_stmt.on_conflict_do_update(constraint='channels_unique_guildid', set_={'role_id': row.role_id}, index_elements=['guild_id', 'channel_id'])
+            update = insert_stmt.on_conflict_do_update(constraint='channels_unique_guildid', set_={'role_id': row.role_id})
             await conn.execute(update)
     await engine.dispose(close=True)
 
