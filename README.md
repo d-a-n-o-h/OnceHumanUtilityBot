@@ -13,6 +13,10 @@ Permissions of this strong copyleft license are conditioned on making available 
 
   - Sends an ephemeral message (only the user who runs the command will see it) that deletes itself after 60 seconds that shows the current UTC time, the list of respawn times, and a timestamp with your local date/time of the next respawn.
 
+`/search_deviant dev_name`:
+
+  - Sends an embed with deviant name, location, effects, and what increases happiness.
+
 `/test_alert`:
 
   - Sends a test alert to your designated channel to ensure it works properly.  This command is pretty much obsolete now that `/setup` has some checks built into it.
