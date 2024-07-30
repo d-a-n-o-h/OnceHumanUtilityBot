@@ -8,13 +8,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
-from sqlalchemy import delete, select # type: ignore
-from sqlalchemy.dialects.postgresql import insert # type: ignore
-from sqlalchemy.ext.asyncio import create_async_engine # type: ignore
+from sqlalchemy import delete, select  # type: ignore
+from sqlalchemy.dialects.postgresql import insert  # type: ignore
+from sqlalchemy.ext.asyncio import create_async_engine  # type: ignore
 
 from modals.channels import ReportingChannel
 from modals.guild_blacklist import GuildBlacklist
-
+from modals.deviant import Deviants
 
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
@@ -53,31 +53,6 @@ class UtilsCog(commands.Cog):
             for child in cmd_group.options:  # type: ignore
                 if child.name.lower() == cmd.lower():
                     return child
-    
-    # async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-    #     if isinstance(error, app_commands.CommandOnCooldown):
-    #         if not interaction.response.is_done():
-    #             return await interaction.response.send_message(f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", ephemeral=True, delete_after=error.retry_after)
-    #         else:
-    #             print(error)
-    #             msg = await interaction.followup.send(content=f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", wait=True)
-    #             await asyncio.sleep(error.retry_after)
-    #             await msg.delete()
-    #     else:
-    #         if not interaction.response.is_done():
-    #             return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
-    #         else:
-    #             print(error)
-    #             msg = await interaction.followup.send(content=f"There was an error with your request:\n`{error}`", wait=True)
-    #             await asyncio.sleep(60)
-    #             await msg.delete()
-
-    @app_commands.command(name='utility', description='Utility command for testing.')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
-    async def utility_command(self, interaction: discord.Interaction):
-        pass
 
 
     @app_commands.command(name='bl_setup', description='Setup the guild_blacklist database.')
@@ -85,20 +60,21 @@ class UtilsCog(commands.Cog):
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
     async def bl_setup(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         guilds_added = 0
         async with engine.begin() as conn:
             for guild in self.bot.guilds:
-                cur_strikes = await conn.execute(select(GuildBlacklist.strikes).filter_by(guild_id=interaction.guild_id))
+                cur_strikes = await conn.execute(select(GuildBlacklist.strikes).filter_by(guild_id=guild.id))
                 cur_strikes = cur_strikes.scalar()
                 if cur_strikes is not None:
                     continue
-                insert_stmt = insert(GuildBlacklist).values(guild_id=interaction.guild_id)
+                insert_stmt = insert(GuildBlacklist).values(guild_id=guild.id)
                 update = insert_stmt.on_conflict_do_nothing(constraint='guild_blacklist_unique_guild_id')
                 await conn.execute(update)
                 guilds_added += 1
         await engine.dispose(close=True)
-        await interaction.edit_original_response(content=f"{guilds_added} guilds added.")
+        msg = await interaction.edit_original_response(content=f"{guilds_added} guilds added.")
+        await msg.delete(delay=10)
 
 
     @app_commands.command(name='manual_send', description='Manually send out an alert to subscribed channels.')
@@ -107,7 +83,7 @@ class UtilsCog(commands.Cog):
     @app_commands.guilds(MY_GUILD_ID)
     async def manual_alert_page(self, interaction: discord.Interaction, verify: Literal['no', 'yes']):
         if verify == 'no':
-            return await interaction.response.send_message("Manual alert not sent.")
+            return await interaction.response.send_message("Manual alert not sent.", ephemeral=True, delete_after=10)
         await interaction.response.defer(ephemeral=True)
         guilds_sent = 0
         time_now = datetime.datetime.now(tz=utc)
@@ -143,7 +119,8 @@ class UtilsCog(commands.Cog):
                 print(f"Error: {e}")
                 continue
         print(f"Sent to {guilds_sent} out of {len(self.bot.guilds)}.")
-        await interaction.followup.send(content=f"Sent to {guilds_sent} out of {len(self.bot.guilds)}.")
+        msg = await interaction.followup.send(content=f"Sent to {guilds_sent} out of {len(self.bot.guilds)}.", wait=True)
+        await msg.delete(delay=10)
 
 
     @app_commands.command(name='errors', description='Lists out the channels without permissions.')
@@ -151,7 +128,7 @@ class UtilsCog(commands.Cog):
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)
     async def list_errors(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         send_errors = 0
         view_errors = 0
         channel_set_errors = 0
@@ -180,7 +157,8 @@ class UtilsCog(commands.Cog):
                 if not cur_chan.permissions_for(cur_chan.guild.me).view_channel:
                     view_errors += 1
                     errors_string += f"Can't view channel #{cur_chan.name} | guild\_id: `{cur_chan.guild.id}` ({self.fix_unicode(cur_chan.guild.name)}).\n" # type: ignore
-        await interaction.followup.send(content=f"Send errors: `{send_errors}`\nView errors: `{view_errors}`\nNo channel set: `{channel_set_errors}`\n")
+        msg = await interaction.followup.send(content=f"Send errors: `{send_errors}`\nView errors: `{view_errors}`\nNo channel set: `{channel_set_errors}`\n", wait=True)
+        await msg.delete(delay=60)
                 
 
     @app_commands.command(name='reload', description='Reloads the cogs.')

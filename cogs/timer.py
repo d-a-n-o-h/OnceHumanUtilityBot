@@ -59,7 +59,7 @@ class TimerCog(commands.Cog):
                 time_now = time_now.replace(minute=0, second=0, microsecond=0)
                 timestamp_now = datetime.datetime.timestamp(time_now)
                 reset_embed.add_field(name='', value=f"This is the <t:{int(timestamp_now)}:t> reset announcement.")
-                setup_cmd = await self.find_cmd(self.bot, cmd='setup')
+                # setup_cmd = await self.find_cmd(self.bot, cmd='setup')
                 # reset_embed.add_field(name='', value=f"Use {setup_cmd.mention} to change the channel or change/add a role to ping.", inline=False) # type: ignore
                 reset_embed.set_footer(text="Log out to the main menu and log back in to see the reset chests.")
                 async with engine.begin() as conn:

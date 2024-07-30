@@ -12,6 +12,7 @@ from sqlalchemy.dialects.postgresql import insert # type: ignore
 from sqlalchemy.ext.asyncio import create_async_engine # type: ignore
 
 from modals.channels import ReportingChannel
+from modals.deviant import Deviants
 
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
@@ -49,16 +50,41 @@ class CommandsCog(commands.Cog):
             else:
                 print(error)
                 msg = await interaction.followup.send(content=f"That command is on cooldown.  Please try again in {round(error.retry_after, 2)} seconds.", wait=True)
-                await asyncio.sleep(error.retry_after)
-                await msg.delete()
+                await msg.delete(delay=error.retry_after)
         else:
             if not interaction.response.is_done():
                 return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
             else:
                 print(error)
                 msg = await interaction.followup.send(content=f"There was an error with your request:\n`{error}`", wait=True)
-                await asyncio.sleep(60)
-                await msg.delete()
+                await msg.delete(delay=60)
+
+    
+    @app_commands.command(name='search_deviant', description='Search the database for a deviant.')
+    @app_commands.describe(dev_name='The name of the deviant you are searching for.  Less is more.')
+    @app_commands.guild_install()
+    @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
+    async def utility_command(self, interaction: discord.Interaction, dev_name: str):
+        dev_name = dev_name.lower()
+        async with engine.begin() as conn:
+            deviant = await conn.execute(select(Deviants).filter(Deviants.name.ilike(f"%{dev_name}%")))
+            deviant = deviant.one_or_none()
+        if deviant is not None:
+            dev_embed = discord.Embed(title=deviant.name, description=deviant.sub_type)
+            color_dict = {
+                'combat': discord.Color.red(),
+                'crafting': discord.Color.blue(),
+                'gadget': discord.Color.green(),
+                'territory': discord.Color.orange()
+                }
+            dev_embed.color = color_dict[deviant.sub_type.split(" – ")[0].lower()]
+            dev_embed.add_field(name='Locations', value=deviant.locations, inline=False)
+            dev_embed.add_field(name='Effect', value=deviant.effect, inline=False)
+            dev_embed.add_field(name='Happiness', value=deviant.happiness, inline=False)
+            dev_embed.set_thumbnail(url=deviant.img_url)
+            return await interaction.response.send_message(embed=dev_embed, delete_after=60)
+        else:
+            return await interaction.response.send_message(f"Unable to locate any deviant containing `{dev_name}`.  Please try your search again.", ephemeral=True, delete_after=30)
 
 
     @app_commands.command(name='test_alert', description='Sends a test alert to your channel.')
