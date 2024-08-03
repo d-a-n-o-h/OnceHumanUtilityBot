@@ -20,7 +20,7 @@ class OHTimerBot(commands.Bot):
             'cogs.timer',
             'cogs.utils'
             )
-        
+        self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(datetime.datetime.now(tz=utc)))}:R>" 
         intents = discord.Intents.default()
 
         super().__init__(
@@ -53,7 +53,25 @@ class OHTimerBot(commands.Bot):
     async def on_ready(self):
         print(f"Logged in as {self.user.name} (ID# {self.user.id})")  # type: ignore
 
+
 bot = OHTimerBot()
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    if isinstance(error, discord.app_commands.CommandOnCooldown):
+        print(error)
+        if not interaction.response.is_done():
+            return await interaction.response.send_message(f"That command is on cooldown.  Please try again in `{round(error.retry_after, 2)}` seconds.", ephemeral=True, delete_after=error.retry_after)
+        else:
+            msg = await interaction.followup.send(content=f"That command is on cooldown.  Please try again in `{round(error.retry_after, 2)}` seconds.", wait=True)
+            await msg.delete(delay=error.retry_after)
+    else:
+        if not interaction.response.is_done():
+            return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
+        else:
+            msg = await interaction.followup.send(content=f"There was an error with your request:\n`{error}`", wait=True)
+            await msg.delete(delay=60)
+
 
 @bot.command()
 @commands.guild_only()

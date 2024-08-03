@@ -6,3 +6,4 @@ discord.py==2.4.0
 lxml==5.2.2
 python-dotenv==1.0.1
 SQLAlchemy==2.0.31
+googletrans==3.1.0a0

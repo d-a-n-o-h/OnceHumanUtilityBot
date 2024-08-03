@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import random
 import sys
@@ -9,10 +8,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
-from sqlalchemy import delete, select # type: ignore
-from sqlalchemy.dialects.postgresql import insert # type: ignore
-from sqlalchemy.ext.asyncio import create_async_engine # type: ignore
+from googletrans import Translator  # type: ignore
+from sqlalchemy import delete, select  # type: ignore
+from sqlalchemy.dialects.postgresql import insert  # type: ignore
+from sqlalchemy.ext.asyncio import create_async_engine  # type: ignore
 
+from languages import LANGUAGES
 from modals.channels import ReportingChannel
 
 utc = datetime.timezone.utc
@@ -25,10 +26,12 @@ else:
     print("Please set the DATABASE or DATABASE_STRING value in the .env file and restart the bot.")
     sys.exit(1)
 
+
 class TimerCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.scheduler = AsyncIOScheduler(timezone=utc)
+        self.translator = Translator()
 
     def cog_load(self):
         if not self.scheduler.running:
@@ -55,19 +58,12 @@ class TimerCog(commands.Cog):
                 guilds_sent = 0
                 time_now = datetime.datetime.now(tz=utc)
                 print(f"Timer! {time_now}")
-                reset_embed = discord.Embed(color=discord.Color.blurple(),title="Once Human Gear/Weapon Crates Reset")
-                time_now = time_now.replace(minute=0, second=0, microsecond=0)
-                timestamp_now = datetime.datetime.timestamp(time_now)
-                reset_embed.add_field(name='', value=f"This is the <t:{int(timestamp_now)}:t> reset announcement.")
-                # setup_cmd = await self.find_cmd(self.bot, cmd='setup')
-                # reset_embed.add_field(name='', value=f"Use {setup_cmd.mention} to change the channel or change/add a role to ping.", inline=False) # type: ignore
-                reset_embed.set_footer(text="Log out to the main menu and log back in to see the reset chests.")
                 async with engine.begin() as conn:
                     all_channels = await conn.execute(select(ReportingChannel.channel_id, ReportingChannel.role_id))
                     all_channels = all_channels.all()
                 await engine.dispose(close=True)
-                random.shuffle(all_channels) # type: ignore
-                for i, (channel_id, role_id) in enumerate(all_channels):
+                random.shuffle(all_channels)
+                for channel_id, role_id in all_channels:
                     cur_chan = self.bot.get_channel(channel_id)
                     if not cur_chan:
                         async with engine.begin() as conn:
@@ -79,6 +75,11 @@ class TimerCog(commands.Cog):
                     else:
                         role_to_mention = None
                     try:
+                        dest = LANGUAGES.get(str(cur_chan.guild.preferred_locale).lower())
+                        reset_embed = discord.Embed(color=discord.Color.blurple(),title=self.translator.translate("Once Human Gear/Weapon Crates Reset", dest=dest).text)
+                        time_now = time_now.replace(minute=0, second=0, microsecond=0)
+                        reset_embed.add_field(name='', value=self.translator.translate(f"This is the <t:{int(datetime.datetime.timestamp(time_now))}:t> reset announcement.", dest=dest).text)
+                        reset_embed.set_footer(text=self.translator.translate("Log out to the main menu and log back in to see the reset chests.", dest=dest).text)
                         await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed)
                         guilds_sent += 1
                     except Exception as e:
@@ -101,12 +102,15 @@ class TimerCog(commands.Cog):
     @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
     @app_commands.guild_install()
     async def what_time_is_it(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        time_now = datetime.datetime.now(tz=utc)
-        next_time_timestamp = datetime.datetime.timestamp(self.scheduler.get_jobs()[0].next_run_time)
-        msg = await interaction.followup.send(content=f"It's `{time_now.hour:02d}:{time_now.minute:02d} UTC`.\nCrates respawn at `00:00`, `04:00`, `08:00`, `12:00`, `16:00`, and `20:00` UTC.\n\nNext respawn <t:{int(next_time_timestamp)}:F> or roughly <t:{int(next_time_timestamp)}:R>.", wait=True)
-        await asyncio.sleep(60)
-        await msg.delete()
+        if interaction.guild:
+            await interaction.response.defer(ephemeral=True)
+            dest = LANGUAGES.get(str(interaction.guild.preferred_locale).lower())
+            time_now = datetime.datetime.now(tz=utc)
+            next_time_timestamp = int(datetime.datetime.timestamp(self.scheduler.get_jobs()[0].next_run_time))
+            msg = await interaction.followup.send(content=self.translator.translate(f"It is {time_now.hour:02d}:{time_now.minute:02d} UTC.\nCrates respawn at 00:00, 04:00, 08:00, 12:00, 16:00, and 20:00 UTC.\n\nNext respawn <t:{next_time_timestamp}:F> or roughly <t:{int(next_time_timestamp)}:R>.", dest=dest).text, wait=True)
+            await msg.delete(delay=60)
+        else:
+            pass
 
 
 async def setup(bot: commands.Bot):
