@@ -1,11 +1,14 @@
 import asyncio
 import datetime
 import sys
-from typing import Literal, Optional
+from typing import Literal, Optional, Final
 
 import discord
 from discord.ext import commands
 from dotenv import dotenv_values
+
+from languages import LANGUAGES
+from translations import TRANSLATIONS
 
 config = dotenv_values(".env")
 utc = datetime.timezone.utc
@@ -22,6 +25,7 @@ class OHTimerBot(commands.Bot):
             )
         self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(datetime.datetime.now(tz=utc)))}:R>" 
         intents = discord.Intents.default()
+        
 
         super().__init__(
             intents=intents,
@@ -29,11 +33,11 @@ class OHTimerBot(commands.Bot):
             )
         
         if config["TESTING_GUILD_ID"]:
-            self.testing_guild_id = int(config["TESTING_GUILD_ID"])
+            self.testing_guild_id: Final[int] = int(config["TESTING_GUILD_ID"])
         else:
             self.testing_guild = None
         if config["DATABASE_STRING"]:
-            self.db_string = config["DATABASE_STRING"]
+            self.db_string: Final[str] = config["DATABASE_STRING"]
         else:
             print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
             sys.exit(1)
@@ -45,10 +49,6 @@ class OHTimerBot(commands.Bot):
             except Exception as e:
                 print(f"Failed to load extension {extension}.")
 
-        if self.testing_guild_id:
-            guild = discord.Object(self.testing_guild_id)
-            await self.tree.sync(guild=guild)
-        await self.tree.sync()
         
     async def on_ready(self):
         print(f"Logged in as {self.user.name} (ID# {self.user.id})")  # type: ignore
@@ -58,18 +58,21 @@ bot = OHTimerBot()
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    dest = LANGUAGES.get(str(interaction.guild_locale).lower())
+    if dest is None:
+        dest = 'en'
     if isinstance(error, discord.app_commands.CommandOnCooldown):
-        print(error)
+        retry_time = round(error.retry_after, 2)
         if not interaction.response.is_done():
-            return await interaction.response.send_message(f"That command is on cooldown.  Please try again in `{round(error.retry_after, 2)}` seconds.", ephemeral=True, delete_after=error.retry_after)
+            return await interaction.response.send_message(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(retry_time), ephemeral=True, delete_after=(error.retry_after/2))
         else:
-            msg = await interaction.followup.send(content=f"That command is on cooldown.  Please try again in `{round(error.retry_after, 2)}` seconds.", wait=True)
-            await msg.delete(delay=error.retry_after)
+            msg = await interaction.followup.send(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(retry_time), wait=True)
+            await msg.delete(delay=(error.retry_after/2))
     else:
         if not interaction.response.is_done():
-            return await interaction.response.send_message(f"There was an error with your request:\n`{error}`", ephemeral=True, delete_after=60)
+            return await interaction.response.send_message(content=TRANSLATIONS[dest]['feedback_error'].format(error), ephemeral=True, delete_after=60)
         else:
-            msg = await interaction.followup.send(content=f"There was an error with your request:\n`{error}`", wait=True)
+            msg = await interaction.followup.send(content=TRANSLATIONS[dest]['feedback_error'].format(error), wait=True)
             await msg.delete(delay=60)
 
 
@@ -77,6 +80,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
 @commands.guild_only()
 @commands.is_owner()
 async def sync(ctx: commands.Context, guilds: commands.Greedy[discord.Object], spec: Optional[Literal["~", "*", "^"]] = None) -> None:
+    await ctx.message.delete()
     if not guilds:
         if spec == "~":
             synced = await ctx.bot.tree.sync(guild=ctx.guild)

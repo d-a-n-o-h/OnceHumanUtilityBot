@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert  # type: ignore
 from sqlalchemy.ext.asyncio import create_async_engine  # type: ignore
 
 from languages import LANGUAGES
-from modals.channels import ReportingChannel
+from modals.channels import CrateRespawnChannel
 from modals.command_uses import CommandUses
 from modals.guild_blacklist import GuildBlacklist
 
@@ -32,40 +32,6 @@ def me_only(interaction: discord.Interaction) -> bool:
     return interaction.user.id == int(config["MY_USER_ID"]) # type: ignore
 
 MY_GUILD_ID = discord.Object(int(config["TESTING_GUILD_ID"])) # type: ignore
-
-class ReportBtn(discord.ui.View):
-    def __init__(self, bot):
-        super().__init__(timeout=5)
-        self.bot = bot
-
-    @discord.ui.button(label='Report Inaccurate', style=discord.ButtonStyle.danger)
-    async def report_timer_inaccurtate_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        time_now = datetime.datetime.now(tz=utc)
-        time_now = time_now.replace(minute=0, second=0, microsecond=0)
-        timestamp_now = datetime.datetime.timestamp(time_now)
-        await interaction.response.defer(ephemeral=True)
-        alert_channel = self.bot.get_channel(1268194573595836436) # type: ignore
-        await interaction.followup.send(content="Thanks for the report!", ephemeral=True, wait=True)
-        await alert_channel.send(f"Reported inaccurate timer @ <t:{int(timestamp_now)}:t>:\nGuild ID: {interaction.guild_id}\nUser ID: {interaction.user.id}")
-        button.disabled = True
-        button.label = "Report Received"
-        button.style = discord.ButtonStyle.success
-        await interaction.edit_original_response(view=self)
-
-    async def interaction_check(self, interaction: discord.Interaction[discord.Client]) -> bool:
-        if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator == True:
-            return True
-        else:
-            await interaction.response.send_message("Sorry, only admins can push that button.", ephemeral=True, delete_after=20)
-            return False
-        
-    async def on_timeout(self) -> None:
-        for child in self.children:
-            if type(child) == discord.ui.Button:
-                child.disabled = True
-        
-        return await super().on_timeout()
-
      
 
 class UtilsCog(commands.Cog):
@@ -93,20 +59,13 @@ class UtilsCog(commands.Cog):
                 if child.name.lower() == cmd.lower():
                     return child
 
-                
+
     @app_commands.command(name='utility', description='UTILITY!')
     @app_commands.guild_install()
     @app_commands.check(me_only)
     @app_commands.guilds(MY_GUILD_ID)   
-    async def utility_command(self, interaction: discord.Interaction, string: str):
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        time_now = datetime.datetime.now(tz=utc)
-        reset_embed = discord.Embed(color=discord.Color.blurple(),title=self.translator.translate("Once Human Gear/Weapon Crates Reset", dest=dest).text)
-        time_now = time_now.replace(minute=0, second=0, microsecond=0)
-        timestamp_now = f"<t:{int(datetime.datetime.timestamp(time_now))}:t>"
-        reset_embed.add_field(name='', value=self.translator.translate(f"This is the <t:{int(datetime.datetime.timestamp(time_now))}:t> reset announcement.", dest=dest).text)
-        reset_embed.set_footer(text=self.translator.translate("Log out to the main menu and log back in to see the reset chests.", dest=dest).text)
-        await interaction.response.send_message(embed=reset_embed)
+    async def utility_cmd(self, interaction: discord.Interaction):
+        return await interaction.response.send_message(f"{type(interaction.channel) == discord.TextChannel}") # type: ignore
 
                 
     @app_commands.command(name='stats', description='Stats about the bot.')
@@ -163,7 +122,7 @@ class UtilsCog(commands.Cog):
                 time_now = datetime.datetime.now(tz=utc)
                 print(f"Timer! {time_now}")
                 async with engine.begin() as conn:
-                    all_channels = await conn.execute(select(ReportingChannel.channel_id, ReportingChannel.role_id))
+                    all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id))
                     all_channels = all_channels.all()
                 await engine.dispose(close=True)
                 random.shuffle(all_channels)
@@ -171,7 +130,7 @@ class UtilsCog(commands.Cog):
                     cur_chan = self.bot.get_channel(channel_id)
                     if not cur_chan:
                         async with engine.begin() as conn:
-                            await conn.execute(delete(ReportingChannel).filter_by(channel_id=channel_id))
+                            await conn.execute(delete(CrateRespawnChannel).filter_by(channel_id=channel_id))
                         await engine.dispose(close=True)
                         continue
                     if cur_chan.guild:
@@ -190,7 +149,7 @@ class UtilsCog(commands.Cog):
                     except Exception as e:
                         print(f"({channel_id}) Error: {e}")
                         async with engine.begin() as conn:
-                            await conn.execute(delete(ReportingChannel).filter_by(channel_id=channel_id))
+                            await conn.execute(delete(CrateRespawnChannel).filter_by(channel_id=channel_id))
                         await engine.dispose(close=True)
                         continue
                 print(f"Sent to {guilds_sent} guilds.\nBot currently in {len(self.bot.guilds)} guilds.")
@@ -217,9 +176,9 @@ class UtilsCog(commands.Cog):
         all_channels_list = list()
         all_guilds_list = list()
         async with engine.begin() as conn:
-            all_channels = await conn.execute(select(ReportingChannel.channel_id))
+            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id))
             all_channels = all_channels.all()
-            all_guilds = await conn.execute(select(ReportingChannel.guild_id))
+            all_guilds = await conn.execute(select(CrateRespawnChannel.guild_id))
             all_guilds = all_guilds.all()
         for guild in all_guilds:
             all_guilds_list.append(guild[0])

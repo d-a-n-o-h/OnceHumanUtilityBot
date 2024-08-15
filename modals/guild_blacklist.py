@@ -1,5 +1,5 @@
-from sqlalchemy import BigInteger, Integer, DateTime
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import BigInteger, Integer, DateTime # type: ignore
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column # type: ignore
 from datetime import datetime, timezone
 
 class Base(DeclarativeBase):

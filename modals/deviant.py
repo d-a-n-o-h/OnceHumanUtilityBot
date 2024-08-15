@@ -1,6 +1,6 @@
 
-from sqlalchemy import Integer, Text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Integer, Text # type: ignore
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column # type: ignore
 
 class Base(DeclarativeBase):
     pass
