@@ -183,42 +183,31 @@ class CommandsCog(commands.Cog):
                     return
                 role: discord.Role = interaction.guild.get_role(role_id) # type: ignore
                 if output_channel and (not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel):
-                    async with engine.begin() as conn:
-                        await conn.execute(delete(CrateRespawnChannel).filter_by(guild_id=interaction.guild_id))
-                    await engine.dispose(close=True)
-                    return await interaction.followup.send(content=TRANSLATIONS[dest]['crate_previous_channel_alert_error'].format(crate_cmd.mention), ephemeral=True)  # type: ignore
-                try:
+                    await interaction.followup.send(content=TRANSLATIONS[dest]['crate_channel_alert_error'].format(crate_cmd.mention), ephemeral=True)  # type: ignore
+                else:
                     crate_embed = discord.Embed(color=discord.Color.blurple(),title=TRANSLATIONS[dest]['test_crate_embed_title'])
                     crate_embed.add_field(name='', value=TRANSLATIONS[dest]['crate_cmd_notify'].format(crate_cmd.mention), inline=False) # type: ignore
                     await output_channel.send(content=f"{role.mention if role else ''}", embed=crate_embed)
                     alert_success.append("Crate Respawn")
-                except:
-                    await interaction.followup.send(content=TRANSLATIONS[dest]['crate_channel_alert_error'].format(output_channel.mention), ephemeral=True)
             if cargo_data:
+                cargo_cmd = await self.find_cmd(self.bot, cmd='cargo_scramble')
                 (channel_id, role_id) = cargo_data
                 output_channel: discord.TextChannel = self.bot.get_channel(channel_id)
                 if output_channel is None:
                     msg = await interaction.followup.send(content=f"Cargo Scramble output channel not found.  Deleted from the database.", wait=True, ephemeral=True)
                     async with engine.begin() as conn:
-                        await conn.execute(delete(CrateRespawnChannel).filter_by(guild_id=interaction.guild_id))
+                        await conn.execute(delete(CargoScrambleChannel).filter_by(guild_id=interaction.guild_id))
                     await engine.dispose(close=True)
                     await msg.delete(delay=60)
                     return
                 role: discord.Role = interaction.guild.get_role(role_id) # type: ignore
-                cargo_cmd = await self.find_cmd(self.bot, cmd='cargo_scramble')
                 if output_channel and (not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel):
-                    async with engine.begin() as conn:
-                        await conn.execute(delete(CargoScrambleChannel).filter_by(guild_id=interaction.guild_id))
-                    await engine.dispose(close=True)
-                    return await interaction.followup.send(content=TRANSLATIONS[dest]['cargo_previous_channel_alert_error'].format(cargo_cmd.mention), ephemeral=True) # type: ignore                
-                try:
+                    await interaction.followup.send(content=TRANSLATIONS[dest]['cargo_channel_alert_error'].format(cargo_cmd.mention), ephemeral=True) # type: ignore
+                else:
                     cargo_embed = discord.Embed(color=discord.Color.blurple(),title=TRANSLATIONS[dest]['test_cargo_embed_title'])
                     cargo_embed.add_field(name='', value=TRANSLATIONS[dest]['cargo_cmd_notify'].format(cargo_cmd.mention), inline=False) # type: ignore
                     await output_channel.send(content=f"{role.mention if role else ''}", embed=cargo_embed)
                     alert_success.append("Cargo Spawn")
-                except:
-                    crate_cmd = await self.find_cmd(self.bot, cmd='setup')
-                    await interaction.followup.send(content=TRANSLATIONS[dest]['cargo_channel_alert_error'].format(output_channel.mention), ephemeral=True)
         await interaction.followup.send(content=TRANSLATIONS[dest]['test_alert_success'].format(', '.join(alert_success), 's' if cargo_data is not None and crate_data is not None else ''), wait=True, ephemeral=True)
     
 
