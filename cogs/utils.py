@@ -8,13 +8,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
-from googletrans import Translator  # type: ignore
-from sqlalchemy import delete, select  # type: ignore
-from sqlalchemy.dialects.postgresql import insert  # type: ignore
-from sqlalchemy.ext.asyncio import create_async_engine  # type: ignore
+from googletrans import Translator
+from sqlalchemy import delete, func, select, or_
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
-from modals.channels import CrateRespawnChannel
+from modals.channels import CargoScrambleChannel, CrateRespawnChannel, CrateMutes, CargoMutes
 from modals.command_uses import CommandUses
 from modals.guild_blacklist import GuildBlacklist
 
@@ -32,7 +32,7 @@ def me_only(interaction: discord.Interaction) -> bool:
     return interaction.user.id == int(config["MY_USER_ID"]) # type: ignore
 
 MY_GUILD_ID = discord.Object(int(config["TESTING_GUILD_ID"])) # type: ignore
-     
+
 
 class UtilsCog(commands.Cog):
     def __init__(self, bot):
@@ -58,14 +58,46 @@ class UtilsCog(commands.Cog):
             for child in cmd_group.options:  # type: ignore
                 if child.name.lower() == cmd.lower():
                     return child
+                
 
-
-    @app_commands.command(name='utility', description='UTILITY!')
+    @app_commands.command(name='mute_stats', description='How many guilds have muted an alert separated by time.')
     @app_commands.guild_install()
     @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)   
-    async def utility_cmd(self, interaction: discord.Interaction):
-        return await interaction.response.send_message(f"{type(interaction.channel) == discord.TextChannel}") # type: ignore
+    @app_commands.guilds(MY_GUILD_ID)
+    async def mute_stats(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        async with engine.begin() as conn:
+            total_cargo = await conn.execute(select(func.count(CargoScrambleChannel.guild_id)))
+            total_cargo = total_cargo.scalar_one_or_none()
+            total_crate = await conn.execute(select(func.count(CrateRespawnChannel.guild_id)))
+            total_crate = total_crate.scalar_one_or_none()
+            cargo_mutes_count = await conn.execute(select(func.count(CargoMutes.guild_id)).where(or_(CargoMutes.twelve==True,CargoMutes.fifteen==True,CargoMutes.twenty_two==True,CargoMutes.eighteen_thirty==True)))
+            cargo_mutes_count = cargo_mutes_count.scalar_one_or_none()
+            crate_mutes_count = await conn.execute(select(func.count(CrateMutes.guild_id)).where(or_(CrateMutes.zero==True,CrateMutes.four==True,CrateMutes.eight==True,CrateMutes.twelve==True,CrateMutes.sixteen==True,CrateMutes.twenty==True)))
+            crate_mutes_count = crate_mutes_count.scalar_one_or_none()
+            cargo_twelve = await conn.execute(select(func.count(CargoMutes.guild_id)).where(CargoMutes.twelve==True))
+            cargo_twelve = cargo_twelve.scalar_one_or_none()
+            cargo_fifteen = await conn.execute(select(func.count(CargoMutes.guild_id)).where(CargoMutes.fifteen==True))
+            cargo_fifteen = cargo_fifteen.scalar_one_or_none()
+            cargo_twenty_two = await conn.execute(select(func.count(CargoMutes.guild_id)).where(CargoMutes.twenty_two==True))
+            cargo_twenty_two = cargo_twenty_two.scalar_one_or_none()
+            cargo_eighteen_thirty = await conn.execute(select(func.count(CargoMutes.guild_id)).where(CargoMutes.eighteen_thirty==True))
+            cargo_eighteen_thirty = cargo_eighteen_thirty.scalar_one_or_none()
+            crate_zero = await conn.execute(select(func.count(CrateMutes.guild_id)).where(CrateMutes.zero==True))
+            crate_zero = crate_zero.scalar_one_or_none()
+            crate_four = await conn.execute(select(func.count(CrateMutes.guild_id)).where(CrateMutes.four==True))
+            crate_four = crate_four.scalar_one_or_none()
+            crate_eight = await conn.execute(select(func.count(CrateMutes.guild_id)).where(CrateMutes.eight==True))
+            crate_eight = crate_eight.scalar_one_or_none()
+            crate_twelve = await conn.execute(select(func.count(CrateMutes.guild_id)).where(CrateMutes.twelve==True))
+            crate_twelve = crate_twelve.scalar_one_or_none()
+            crate_sixteen = await conn.execute(select(func.count(CrateMutes.guild_id)).where(CrateMutes.sixteen==True))
+            crate_sixteen = crate_sixteen.scalar_one_or_none()
+            crate_twenty = await conn.execute(select(func.count(CrateMutes.guild_id)).where(CrateMutes.twenty==True))
+            crate_twenty = crate_twenty.scalar_one_or_none()
+        await engine.dispose(close=True)
+        msg = await interaction.edit_original_response(content=f"# Total Count\n## Cargo: `{cargo_mutes_count}`/`{total_cargo}` (`{round((cargo_mutes_count/total_cargo)*100, 2)}%`)\n## Crate: `{crate_mutes_count}`/`{total_crate}` (`{round((crate_mutes_count/total_crate)*100, 2)}%`)\n\n### Cargo\n- 12:00: `{cargo_twelve}`\n- 15:00: `{cargo_fifteen}`\n- 18:30: `{cargo_eighteen_thirty}`\n- 22:00: `{cargo_twenty_two}`\n\n### Crate\n- 00:00: `{crate_zero}`\n- 04:00: `{crate_four}`\n- 08:00: `{crate_eight}`\n- 12:00: `{crate_twelve}`\n- 16:00: `{crate_sixteen}`\n- 20:00: `{crate_twenty}`")
+        await msg.delete(delay=30)
 
                 
     @app_commands.command(name='stats', description='Stats about the bot.')
@@ -76,6 +108,7 @@ class UtilsCog(commands.Cog):
         async with engine.begin() as conn:
             command_usage = await conn.execute(select(CommandUses).order_by(CommandUses.last_used.desc()).filter_by(admin=False))
             command_usage = command_usage.fetchall()
+        await engine.dispose(close=True)
         stats_embed = discord.Embed(title="Bot Stats", color=discord.Color.gold())
         stats_embed.description = f"Up since: {self.bot.uptime_timestamp}"
         stats_embed.set_thumbnail(url=self.bot.user.avatar.url)
@@ -180,6 +213,7 @@ class UtilsCog(commands.Cog):
             all_channels = all_channels.all()
             all_guilds = await conn.execute(select(CrateRespawnChannel.guild_id))
             all_guilds = all_guilds.all()
+        await engine.dispose(close=True)
         for guild in all_guilds:
             all_guilds_list.append(guild[0])
         for channel in all_channels:

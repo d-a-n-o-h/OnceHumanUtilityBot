@@ -18,7 +18,7 @@ strings_to_translate = [
     {'guild_blacklist_message': 'Your guild was blacklisted from adding the bot due to removing it from the server too many times.\nPlease contact me on Discord on the support server if you have a good reason for removing it so many times.'},
     {'new_guild_welcome_message_title': 'Thanks for adding the Once Human Utility Bot!'},
     {'new_guild_welcome_message_description': 'This message was added to combat the issue with users not getting alerts.'},
-    {'new_guild_welcome_message_info': 'By default, you will not get any alerts.\nPlease use the {} command to setup the alerts.'},
+    {'new_guild_welcome_message_info': 'By default, you will not get any alerts.\nPlease use the {} or {} command to setup the alerts.'},
     {'new_guild_welcome_message_footer': 'The is the only \"spam\" message the bot will send.\nThis message deletes itself after 5 minutes.'},
     {'feedback_response': 'Thank you for the `{}` report, {}!\n\nSent:\n`{}`\n\n-# Follow up on the support server!'},
     {'feedback_wrong_choice': 'Please only enter `Feedback` or `Bug` into the feedback type box.'},
@@ -32,10 +32,10 @@ strings_to_translate = [
     {'test_cargo_embed_title': 'Cargo Scramble Test Alert'},
     {'crate_previous_channel_alert_error': 'The channel you previous selected for weapon/gear crate respawn alerts was not a text/announcement channel.\nYour settings have been removed from the database.\nPlease {} your channel again.'},
     {'crate_cmd_notify': 'Use {} to change the channel or change/add a role to ping.'},
-    {'crate_channel_alert_error': '[CRATE] The bot is not able to send messages/view the channel in the channel you have chosen for Weapon/Gear crate respawn alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel and Send Messages set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server.'},
+    {'crate_channel_alert_error': '[CRATE] The bot is not able to send messages/view the channel in the channel you have chosen for Weapon/Gear crate respawn alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel, Send Messages, and Embed Links set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server.'},
     {'cargo_previous_channel_alert_error': 'The channel you previous selected for cargo scramble spawn alerts was not a text/announcement channel.\nYour settings have been removed from the database.\nPlease {} your channel again.'},
     {'cargo_cmd_notify': 'Use {} to change the channel or change/add a role to ping.'},
-    {'cargo_channel_alert_error': '[CARGO] The bot is not able to send messages/view the channel in the channel you have chosen for cargo scramble spawn alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel and Send Messages set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server,'},
+    {'cargo_channel_alert_error': '[CARGO] The bot is not able to send messages/view the channel in the channel you have chosen for cargo scramble spawn alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel, Send Messages, and Embed Links set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server,'},
     {'test_alert_success': 'Sent test embed(s): `{}` to your channel{}.'},
     {'check_channel_type_error': 'This bot only supports text/announcement channels.\nPlease {} your channel again.'},
     {'check_chanel_not_found_error': 'Channel not found.\nPlease {} your channel again.'},
@@ -47,7 +47,7 @@ strings_to_translate = [
     {'setup_crate_channel_ping': '{}, this channel is where weapon/gear crate respawn alerts will be sent!'},
     {'setup_crate_success': 'Your crate alerts output channel has been set to {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
     {'setup_cargo_channel_ping': '{}, this channel is where cargo scramble alerts will be sent!'},
-    {'setup_cargo_success': 'Your cargo scramble alerts output channel has been set to {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'}
+    {'setup_cargo_success': 'Your cargo scramble alerts output channel has been set to {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
     ]
 
 class AutoVivification(dict):

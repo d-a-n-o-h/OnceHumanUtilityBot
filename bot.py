@@ -58,6 +58,7 @@ bot = OHTimerBot()
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    print(error)
     dest = LANGUAGES.get(str(interaction.guild_locale).lower())
     if dest is None:
         dest = 'en'

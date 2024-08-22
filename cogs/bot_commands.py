@@ -7,14 +7,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
-from googletrans import Translator  # type: ignore
-from sqlalchemy import delete, select  # type: ignore
-from sqlalchemy.dialects.postgresql import insert  # type: ignore
-from sqlalchemy.ext.asyncio import create_async_engine  # type: ignore
+from googletrans import Translator
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
 from translations import TRANSLATIONS
-from modals.channels import CargoScrambleChannel, CrateRespawnChannel
+from modals.channels import CargoScrambleChannel, CrateRespawnChannel, CrateMutes, CargoMutes
 from modals.deviant import Deviants
 
 utc = datetime.timezone.utc
@@ -69,6 +69,92 @@ class Feedback(discord.ui.Modal, title='Feedback/Bug Report'):
 
             traceback.print_exception(type(error), error, error.__traceback__)  
 
+class CrateMuteSelect(discord.ui.Select):
+    def __init__(self):
+        hours = [0,4,8,12,16,20]
+        options = []
+        options.append(discord.SelectOption(label="None", value="None", default=False))
+        for hour in hours:
+            hour_opt = discord.SelectOption(label=f"{hour:02}:00 UTC", value=hour, default=False)
+            options.append(hour_opt)
+        super().__init__(placeholder="Pick the hour(s) you want to mute.", max_values=6, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if len(self.values) == 1 and self.values[0] == "None":
+            async with engine.begin() as conn:
+                insert_stmt = insert(CrateMutes).values(guild_id=interaction.guild_id,zero=False,four=False,eight=False,twelve=False,sixteen=False,twenty=False)
+                update_stmt = insert_stmt.on_conflict_do_update(constraint='crate_mutes_unique_guildid', set_={'zero': False, 'four': False, 'eight': False, 'twelve': False, 'sixteen': False, 'twenty': False})
+                await conn.execute(update_stmt)
+            await engine.dispose(close=True)
+            return await interaction.response.send_message("No mutes set or all mutes removed.", delete_after=60, ephemeral=True)
+        db_dict = {0: "zero", 4: "four", 8: "eight", 12: "twelve", 16: "sixteen", 20: "twenty"}
+        db_convert = {'zero': False, 'four': False, 'eight': False, 'twelve': False, 'sixteen': False, 'twenty': False, }
+        muted_values = []
+        for value in self.values:
+            if value == "None":
+                continue
+            muted_values.append(f"`{int(value):02}:00`")
+            db_convert[db_dict[int(value)]] = True
+        muted_values.sort()
+        async with engine.begin() as conn:
+            insert_stmt = insert(CrateMutes).values(guild_id=interaction.guild_id,zero=db_convert['zero'],four=db_convert['four'],eight=db_convert['eight'],twelve=db_convert['twelve'],sixteen=db_convert['sixteen'],twenty=db_convert['twenty'])
+            update_stmt = insert_stmt.on_conflict_do_update(constraint='crate_mutes_unique_guildid', set_={'zero': db_convert['zero'], 'four': db_convert['four'], 'eight': db_convert['eight'], 'twelve': db_convert['twelve'], 'sixteen': db_convert['sixteen'], 'twenty': db_convert['twenty'], })
+            await conn.execute(update_stmt)
+        await engine.dispose(close=True)
+        await interaction.response.send_message(f"You have muted {', '.join(muted_values)} UTC.", delete_after=60, ephemeral=True)
+
+class CrateMuteView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(CrateMuteSelect())
+
+
+class CargoMuteSelect(discord.ui.Select):
+    def __init__(self):
+        hours = [12,15,18,22]
+        options = []
+        options.append(discord.SelectOption(label="None", value="None", default=False))
+        for hour in hours:
+            if hour == 18:
+                hour_opt = discord.SelectOption(label=f"{hour:02}:30 UTC", value=hour, default=False)
+            else:
+                hour_opt = discord.SelectOption(label=f"{hour:02}:00 UTC", value=hour, default=False)
+            options.append(hour_opt)
+        super().__init__(placeholder="Pick the hour(s) you want to mute.", max_values=4, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        if len(self.values) == 1 and self.values[0] == "None":
+            async with engine.begin() as conn:
+                insert_stmt = insert(CargoMutes).values(guild_id=interaction.guild_id,twelve=False,fifteen=False,twenty_two=False,eighteen_thirty=False)
+                update_stmt = insert_stmt.on_conflict_do_update(constraint='cargo_mutes_unique_guildid', set_={'twelve': False, 'fifteen': False, 'twenty_two': False, 'eighteen_thirty': False})
+                await conn.execute(update_stmt)
+            await engine.dispose(close=True)
+            return await interaction.response.send_message("No mutes set or all mutes removed.", delete_after=60, ephemeral=True)
+        db_dict = {12: 'twelve', 15: 'fifteen', 18: 'eighteen_thirty', 22: 'twenty_two'}
+        db_convert = {'twelve': False, 'fifteen': False, 'eighteen_thirty': False, 'twenty_two': False}
+        muted_values = []
+        for value in self.values:
+            if value == "None":
+                continue
+            if value == 18:
+                muted_values.append(f"`{int(value):02}:30`")
+            else:
+                muted_values.append(f"`{int(value):02}:00`")
+            db_convert[db_dict[int(value)]] = True
+        muted_values.sort()
+        async with engine.begin() as conn:
+            insert_stmt = insert(CargoMutes).values(guild_id=interaction.guild_id,twelve=db_convert['twelve'],fifteen=db_convert['fifteen'],twenty_two=db_convert['twenty_two'],eighteen_thirty=db_convert['eighteen_thirty'])
+            update_stmt = insert_stmt.on_conflict_do_update(constraint='cargo_mutes_unique_guildid', set_={'twelve': db_convert['twelve'], 'fifteen': db_convert['fifteen'], 'twenty_two': db_convert['twenty_two'], 'eighteen_thirty': db_convert['eighteen_thirty']})
+            await conn.execute(update_stmt)
+        await engine.dispose(close=True)
+        await interaction.response.send_message(f"You have muted {', '.join(muted_values)} UTC.", delete_after=60, ephemeral=True)
+
+class CargoMuteView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(CargoMuteSelect())
+
+
 class CommandsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -95,10 +181,10 @@ class CommandsCog(commands.Cog):
             for child in cmd_group.options:  # type: ignore
                 if child.name.lower() == cmd.lower():
                     return child
-                
+
 
     @app_commands.command(name='support', description='Send an embed with a link to the support server.')
-    @app_commands.guild_install()
+    @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.checks.cooldown(1, 3600, key=lambda i: (i.guild_id, i.user.id))
     async def send_support_embed(self, interaction: discord.Interaction):
         support_embed = discord.Embed(title=f"{interaction.guild.me.display_name} Quick Support", color=discord.Color.og_blurple(), url="https://discord.mycodeisa.meme") # type: ignore
@@ -113,7 +199,7 @@ class CommandsCog(commands.Cog):
                 
     
     @app_commands.command(name='feedback', description='Open a form to provide feedback/a bug report about the bot.')
-    @app_commands.guild_install()
+    @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.checks.cooldown(1, 1800, key=lambda i: (i.guild_id, i.user.id))
     async def feedback_report(self, interaction: discord.Interaction):
         await interaction.response.send_modal(Feedback(self.bot))
@@ -121,7 +207,7 @@ class CommandsCog(commands.Cog):
     
     @app_commands.command(name='search_deviant', description='Search the database for a deviant.')
     @app_commands.describe(dev_name='The ENGLISH name of the deviant you are searching for.  Less is more.')
-    @app_commands.guild_install()
+    @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
     async def search_deviant(self, interaction: discord.Interaction, dev_name: str):
         dest = LANGUAGES.get(str(interaction.guild_locale).lower())
@@ -182,7 +268,7 @@ class CommandsCog(commands.Cog):
                     await msg.delete(delay=60)
                     return
                 role: discord.Role = interaction.guild.get_role(role_id) # type: ignore
-                if output_channel and (not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel):
+                if output_channel and (not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links):
                     await interaction.followup.send(content=TRANSLATIONS[dest]['crate_channel_alert_error'].format(crate_cmd.mention), ephemeral=True)  # type: ignore
                 else:
                     crate_embed = discord.Embed(color=discord.Color.blurple(),title=TRANSLATIONS[dest]['test_crate_embed_title'])
@@ -209,66 +295,27 @@ class CommandsCog(commands.Cog):
                     await output_channel.send(content=f"{role.mention if role else ''}", embed=cargo_embed)
                     alert_success.append("Cargo Spawn")
         await interaction.followup.send(content=TRANSLATIONS[dest]['test_alert_success'].format(', '.join(alert_success), 's' if cargo_data is not None and crate_data is not None else ''), wait=True, ephemeral=True)
+
+    
+    @app_commands.command(name='crate_mute', description='Mute crate alerts at specific times.')
+    @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
+    async def mute_crate_alerts(self, interaction: discord.Interaction):
+        view = CrateMuteView()
+        return await interaction.response.send_message(content=f"Pick the hour(s) you want to mute for `WEAPON/GEAR CRATE RESPAWN ALERTS`.\nFind a timezone converter online if you don't know what your local time is in UTC.\nNothing will be selected until you click away from the menu.\nPicking `None` by itself will remove all mutes you have set.\n\n-# This menu is reusable and will delete after 2 minutes.", view=view, delete_after=120, ephemeral=True) # type: ignore
+
+
+    @app_commands.command(name='cargo_mute', description='Mute cargo alerts at specific times.')
+    @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
+    async def mute_cargo_alerts(self, interaction: discord.Interaction):
+        view = CargoMuteView()
+        return await interaction.response.send_message(content=f"Pick the hour(s) you want to mute for `CARGO SCRAMBLE SPAWN ALERTS`.\nFind a timezone converter online if you don't know what your local time is in UTC.\nNothing will be selected until you click away from the menu.\nPicking `None` by itself will remove all mutes you have set.\n\n-# This menu is reusable and will delete after 2 minutes.", view=view, delete_after=120, ephemeral=True) # type: ignore
     
 
-    # @app_commands.command(name='check', description='Shows which channel/role the bot will send alerts to.')
-    # @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-    # @app_commands.default_permissions(administrator=True)
-    # @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
-    # async def check_info(self, interaction: discord.Interaction):
-    #     await interaction.response.defer(ephemeral=True)
-    #     dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-    #     if dest is None:
-    #         dest = 'en'
-    #     async with engine.begin() as conn:
-    #         crate_data = await conn.execute(select(CrateRespawnChannel.channel_id,CrateRespawnChannel.role_id).filter_by(guild_id=interaction.guild_id))
-    #         crate_data = crate_data.one_or_none()
-    #         cargo_data = await conn.execute(select(CargoScrambleChannel.channel_id,CargoScrambleChannel.role_id).filter_by(guild_id=interaction.guild_id))
-    #         cargo_data = cargo_data.one_or_none()
-    #     await engine.dispose(close=True)
-    #     cargo_cmd = await self.find_cmd(self.bot, cmd='cargo_scramble')
-    #     crate_cmd = await self.find_cmd(self.bot, cmd='setup')
-    #     if cargo_data:
-    #         if cargo_data[1]:
-    #             role = interaction.guild.get_role(int(cargo_data[1])) # type: ignore
-    #         else:
-    #             role = None
-    #         channel = interaction.guild.get_channel(int(cargo_data[0])) # type: ignore
-    #         if channel and not type(channel) == discord.channel.TextChannel:
-    #             async with engine.begin() as conn:
-    #                 await conn.execute(delete(CargoScrambleChannel).filter_by(guild_id=interaction.guild_id))
-    #             await engine.dispose(close=True)
-    #             await interaction.followup.send(content=TRANSLATIONS[dest]['check_channel_type_error'].format(cargo_cmd.mention)) # type: ignore
-    #         if not channel:
-    #             async with engine.begin() as conn:
-    #                 await conn.execute(delete(CargoScrambleChannel).filter_by(guild_id=interaction.guild_id))
-    #             await engine.dispose(close=True)
-    #             await interaction.followup.send(content=TRANSLATIONS[dest]['check_chanel_not_found_error'].format(cargo_cmd.mention)) # type: ignore
-    #         await interaction.followup.send(content=TRANSLATIONS[dest]['check_cargo_channel_success'].format(channel.mention if channel else '`None`', role.mention if role else '`None`'), wait=True)
-    #     else:
-    #         await interaction.followup.send(content=TRANSLATIONS[dest]['check_cargo_not_used'].format(cargo_cmd.mention), wait=True) # type: ignore
-    #     if crate_data:
-    #         if crate_data[1]:
-    #             role = interaction.guild.get_role(int(crate_data[1])) # type: ignore
-    #         else:
-    #             role = None
-    #         channel = interaction.guild.get_channel(int(crate_data[0])) # type: ignore
-    #         if channel and not type(channel) == discord.channel.TextChannel:
-    #             async with engine.begin() as conn:
-    #                 await conn.execute(delete(CrateRespawnChannel).filter_by(guild_id=interaction.guild_id))
-    #             await engine.dispose(close=True)
-    #             await interaction.followup.send(content=TRANSLATIONS[dest]['check_channel_type_error'].format(crate_cmd.mention)) # type: ignore
-    #         if not channel:
-    #             async with engine.begin() as conn:
-    #                 await conn.execute(delete(CrateRespawnChannel).filter_by(guild_id=interaction.guild_id))
-    #             await engine.dispose(close=True)
-    #             await interaction.followup.send(content=TRANSLATIONS[dest]['check_chanel_not_found_error'].format(crate_cmd.mention)) # type: ignore
 
-    #         await interaction.followup.send(content=TRANSLATIONS[dest]['check_crate_channel_success'].format(channel.mention if channel else '`None`', role.mention if role else '`None`'), wait=True)
-    #     else:
-    #         await interaction.followup.send(content=TRANSLATIONS[dest]['check_crate_not_used'].format(crate_cmd.mention), wait=True) # type: ignore
-        
-    
     @app_commands.command(name='remove_data', description='Remove your guild and channel ID from the database.')
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.default_permissions(administrator=True)
@@ -281,6 +328,8 @@ class CommandsCog(commands.Cog):
         async with engine.begin() as conn:
             await conn.execute(delete(CrateRespawnChannel).filter_by(guild_id=interaction.guild_id))
             await conn.execute(delete(CargoScrambleChannel).filter_by(guild_id=interaction.guild_id))
+            await conn.execute(delete(CrateMutes).filter_by(guild_id=interaction.guild_id))
+            await conn.execute(delete(CargoMutes).filter_by(guild_id=interaction.guild_id))
         await engine.dispose(close=True)
         return await interaction.followup.send(content=TRANSLATIONS[dest]['remove_data_success'])
         
@@ -295,7 +344,7 @@ class CommandsCog(commands.Cog):
         dest = LANGUAGES.get(str(interaction.guild_locale).lower())
         if dest is None:
             dest = 'en'
-        if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel:
+        if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['crate_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if role_to_mention:
             role_id = role_to_mention.id
@@ -303,7 +352,7 @@ class CommandsCog(commands.Cog):
             role_id = None
         async with engine.begin() as conn:
             insert_stmt = insert(CrateRespawnChannel).values(guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,added_by=interaction.user.id)
-            update = insert_stmt.on_conflict_do_update(constraint='craterespawn_channels_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id})
+            update = insert_stmt.on_conflict_do_update(constraint='craterespawn_channels_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id, 'added_by': interaction.user.id})
             await conn.execute(update)
         await engine.dispose(close=True)
         await output_channel.send(content=TRANSLATIONS[dest]['setup_crate_channel_ping'].format(interaction.user.mention))
@@ -320,7 +369,7 @@ class CommandsCog(commands.Cog):
         dest = LANGUAGES.get(str(interaction.guild_locale).lower())
         if dest is None:
             dest = 'en'
-        if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel:
+        if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['cargo_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
             cargo_cmd = await self.find_cmd(self.bot, cmd='cargo_scramble')
@@ -331,7 +380,7 @@ class CommandsCog(commands.Cog):
             role_id = None
         async with engine.begin() as conn:
             insert_stmt = insert(CargoScrambleChannel).values(guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,added_by=interaction.user.id)
-            update = insert_stmt.on_conflict_do_update(constraint='cargoscramble_channels_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id})
+            update = insert_stmt.on_conflict_do_update(constraint='cargoscramble_channels_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id, 'added_by': interaction.user.id})
             await conn.execute(update)
         await engine.dispose(close=True)
         await output_channel.send(content=TRANSLATIONS[dest]['setup_cargo_channel_ping'].format(interaction.user.mention))

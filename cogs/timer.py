@@ -5,18 +5,18 @@ from time import perf_counter
 from typing import Final
 
 import discord
-from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore
-from apscheduler.triggers.combining import OrTrigger  # type: ignore
-from apscheduler.triggers.cron import CronTrigger  # type: ignore
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.combining import OrTrigger
+from apscheduler.triggers.cron import CronTrigger
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
-from sqlalchemy import delete, select  # type: ignore
-from sqlalchemy.ext.asyncio import create_async_engine  # type: ignore
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
 from translations import TRANSLATIONS
-from modals.channels import CrateRespawnChannel, CargoScrambleChannel
+from modals.channels import CrateRespawnChannel, CargoScrambleChannel, CrateMutes, CargoMutes
 
 utc = datetime.timezone.utc
 
@@ -70,9 +70,27 @@ class TimerCog(commands.Cog):
                 print(f"[{alert_type.upper()}] Timer start: {time_now}")
                 async with engine.begin() as conn:
                     if alert_type == 'cargo':
-                        all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id))
+                        if int(time_now.hour) == 11:
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.twelve==False))
+                        if int(time_now.hour) == 14:
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.fifteen==False))
+                        if int(time_now.hour) == 18:
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.eighteen_thirty==False))
+                        if int(time_now.hour) == 21:
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.twenty_two==False))
                     elif alert_type == 'crate':
-                        all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id))
+                        if int(time_now.hour) == 0:
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.zero==False))
+                        if int(time_now.hour) == 4:
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.four==False))
+                        if int(time_now.hour) == 8:
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.eight==False))
+                        if int(time_now.hour) == 12:
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.twelve==False))
+                        if int(time_now.hour) == 16:
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.sixteen==False))
+                        if int(time_now.hour) == 20:
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.twenty==False))
                     all_channels = all_channels.all()
                 await engine.dispose(close=True)
                 random.shuffle(all_channels)
@@ -88,7 +106,7 @@ class TimerCog(commands.Cog):
                         print(f"Channel not found: {channel_id}.  Deleted.")
                         errors += 1
                         continue
-                    if (not cur_chan.permissions_for(cur_chan.guild.me).send_messages or not cur_chan.permissions_for(cur_chan.guild.me).view_channel): # type: ignore
+                    if (not cur_chan.permissions_for(cur_chan.guild.me).send_messages or not cur_chan.permissions_for(cur_chan.guild.me).view_channel or not cur_chan.permissions_for(cur_chan.guild.me).embed_links): # type: ignore
                         async with engine.begin() as conn:
                             if alert_type == 'cargo':
                                 await conn.execute(delete(CargoScrambleChannel).filter_by(channel_id=channel_id))
@@ -109,11 +127,13 @@ class TimerCog(commands.Cog):
                         if alert_type == 'cargo':
                             cargo_timestamp = int(datetime.datetime.timestamp(time_now + datetime.timedelta(minutes=5)))
                             reset_embed = discord.Embed(color=discord.Color.blurple(),title="Once Human Cargo Scramble Spawn")
-                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['cargo_scramble_alert_message'].format(f'<t:{cargo_timestamp}:R>'))
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['cargo_scramble_alert_message'].format(f'<t:{cargo_timestamp}:R>'), inline=False)
+                            #reset_embed.add_field(name='', value="You can now pick times to mute with </cargo_mute:1274272068417880117>.", inline=False)
                         elif alert_type == 'crate':
                             crate_timestamp = int(datetime.datetime.timestamp(time_now.replace(minute=0, second=0, microsecond=0)))
                             reset_embed = discord.Embed(color=discord.Color.blurple(),title="Once Human Gear/Weapon Crates Reset")
-                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['crate_respawn_alert_message'].format(f'<t:{crate_timestamp}:t>'))
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['crate_respawn_alert_message'].format(f'<t:{crate_timestamp}:t>'), inline=False)
+                            #reset_embed.add_field(name='', value="You can now pick times to mute with </crate_mute:1274272068417880116>.", inline=False)
                             reset_embed.set_footer(text=TRANSLATIONS[dest]['crate_respawn_footer'])
                         await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed) # type: ignore
                         guilds_sent += 1
