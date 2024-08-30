@@ -9,7 +9,7 @@ https://discord.com/oauth2/authorize?client_id=1264198984306790431
 (30 minute cooldown per user)
 - Opens a form to provide anonymous feedback or bug report about the bot.
  - Reports are visible to all members of the support server to vote and/or comment on.
-### `/search_deviant dev_name`:
+### `/search_deviant` `dev_name`:
 (30 second cooldown per user)
 - You can now search a small database for information on deviants.
 ### `/next`:
@@ -17,13 +17,15 @@ https://discord.com/oauth2/authorize?client_id=1264198984306790431
 - Sends an ephemeral message (only the user who runs the command will see it) that shows the current UTC time, the list of crate and cargo scramble respawn times, and a timestamp with your local date/time of the next respawn.
 
 ## <- ADMINISTRATOR ONLY COMMANDS ->
-### `/setup channel [role]`:
+### `/crate setup` `channel` `[role]`:
 - Set the text/announcement channel that the weapon/gear crate respawn alert will be sent.
 - [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention (default behavior).
-### `/cargo_scramble channel [role]`:
+### `/crate auto_delete` and `/cargo auto_delete` `On/Off`:
+- Set alerts to auto delete themselves prior to the next one sending.
+### `/cargo setup` `channel` `[role]`:
 - Set the text/announcement channel that the Cargo Scramble alert will be sent.
 - [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention (default behavior).
-### `/crate_mute` and `/cargo_mute`:
+### `/crate mute` and `/cargo mute`:
 (30 second cooldown per user)
 - Mutes alerts for times you pick.
 ### `/test_alert`:
