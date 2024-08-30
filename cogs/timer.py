@@ -1,5 +1,6 @@
 import datetime
 import random
+import calendar
 import sys
 from time import perf_counter
 from typing import Final
@@ -15,8 +16,10 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
+from models.channels import (CargoMutes, CargoScrambleChannel, CrateMutes,
+                             CrateRespawnChannel, AutoDelete)
+from models.weekly_resets import Purification, Controller
 from translations import TRANSLATIONS
-from modals.channels import CrateRespawnChannel, CargoScrambleChannel, CrateMutes, CargoMutes
 
 utc = datetime.timezone.utc
 
@@ -29,9 +32,9 @@ else:
     sys.exit(1)
 
 def me_only(interaction: discord.Interaction) -> bool:
-    return interaction.user.id == int(config["MY_USER_ID"]) # type: ignore
+    return interaction.user.id == int(config["MY_USER_ID"])
 
-MY_GUILD_ID = discord.Object(int(config["TESTING_GUILD_ID"])) # type: ignore
+MY_GUILD_ID = discord.Object(int(config["TESTING_GUILD_ID"]))
 
 
 class TimerCog(commands.Cog):
@@ -47,6 +50,8 @@ class TimerCog(commands.Cog):
                 ])
             self.scheduler.add_job(self.generate_alert, 'cron', name='crate_respawn_alert', args=['crate'], coalesce=False, hour='0,4,8,12,16,20', minute=0)
             self.scheduler.add_job(self.generate_alert, cargo_trigger, name='cargo_spawn_alert', args=['cargo'], coalesce=False)
+            # self.scheduler.add_job(self.generate_alert, 'cron', name='purification_reset_alert', args=['purify'], coalesce=False, hour=7, minute=0)
+            # self.scheduler.add_job(self.generate_alert, 'cron', name='controller_reset_alert', args=['controller'], coalesce=False, hour=7, minute=0)
             self.scheduler.add_job(self.update_stats, 'interval', name='update_stats', minutes=6)
             self.scheduler.start()
 
@@ -56,7 +61,7 @@ class TimerCog(commands.Cog):
 
 
     async def update_stats(self):
-        stats_chan: discord.VoiceChannel = self.bot.get_channel(int(config["COUNT_CHAN"])) # type: ignore
+        stats_chan: discord.VoiceChannel = self.bot.get_channel(int(config["COUNT_CHAN"]))
         await stats_chan.edit(name=f'{len(self.bot.guilds)} Servers')
 
 
@@ -71,30 +76,30 @@ class TimerCog(commands.Cog):
                 async with engine.begin() as conn:
                     if alert_type == 'cargo':
                         if int(time_now.hour) == 11:
-                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.twelve==False))
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(CargoMutes.twelve==False))
                         if int(time_now.hour) == 14:
-                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.fifteen==False))
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(CargoMutes.fifteen==False))
                         if int(time_now.hour) == 18:
-                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.eighteen_thirty==False))
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(CargoMutes.eighteen_thirty==False))
                         if int(time_now.hour) == 21:
-                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id).join(CargoMutes).filter(CargoMutes.twenty_two==False))
+                            all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(CargoMutes.twenty_two==False))
                     elif alert_type == 'crate':
                         if int(time_now.hour) == 0:
-                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.zero==False))
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.zero==False))
                         if int(time_now.hour) == 4:
-                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.four==False))
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.four==False))
                         if int(time_now.hour) == 8:
-                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.eight==False))
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.eight==False))
                         if int(time_now.hour) == 12:
-                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.twelve==False))
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.twelve==False))
                         if int(time_now.hour) == 16:
-                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.sixteen==False))
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.sixteen==False))
                         if int(time_now.hour) == 20:
-                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).join(CrateMutes).filter(CrateMutes.twenty==False))
+                            all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.twenty==False))
                     all_channels = all_channels.all()
                 await engine.dispose(close=True)
                 random.shuffle(all_channels)
-                for channel_id, role_id in all_channels:
+                for channel_id, role_id, auto_delete in all_channels:
                     cur_chan = self.bot.get_channel(channel_id)
                     if cur_chan is None:
                         async with engine.begin() as conn:
@@ -106,7 +111,7 @@ class TimerCog(commands.Cog):
                         print(f"Channel not found: {channel_id}.  Deleted.")
                         errors += 1
                         continue
-                    if (not cur_chan.permissions_for(cur_chan.guild.me).send_messages or not cur_chan.permissions_for(cur_chan.guild.me).view_channel or not cur_chan.permissions_for(cur_chan.guild.me).embed_links): # type: ignore
+                    if (not cur_chan.permissions_for(cur_chan.guild.me).send_messages or not cur_chan.permissions_for(cur_chan.guild.me).view_channel or not cur_chan.permissions_for(cur_chan.guild.me).embed_links):
                         async with engine.begin() as conn:
                             if alert_type == 'cargo':
                                 await conn.execute(delete(CargoScrambleChannel).filter_by(channel_id=channel_id))
@@ -114,31 +119,33 @@ class TimerCog(commands.Cog):
                                 await conn.execute(delete(CrateRespawnChannel).filter_by(channel_id=channel_id))
                         await engine.dispose(close=True)
                         errors += 1
-                        print(f"Deleted {cur_chan.name} (channel_id: {channel_id}) @ {cur_chan.guild.name} (guild_id: {cur_chan.guild.id}) due to missing permissions.") # type: ignore
+                        print(f"Deleted {cur_chan.name} (channel_id: {channel_id}) @ {cur_chan.guild.name} (guild_id: {cur_chan.guild.id}) due to missing permissions.")
                         continue
-                    if role_id is not None: # type: ignore
-                        role_to_mention = cur_chan.guild.get_role(role_id) # type: ignore
+                    if role_id is not None:
+                        role_to_mention = cur_chan.guild.get_role(role_id)
                     else:
                         role_to_mention = None
                     try:
-                        dest = LANGUAGES.get(str(cur_chan.guild.preferred_locale).lower()) # type: ignore
+                        dest = LANGUAGES.get(str(cur_chan.guild.preferred_locale).lower())
                         if dest is None:
                             dest = 'en'
                         if alert_type == 'cargo':
                             cargo_timestamp = int(datetime.datetime.timestamp(time_now + datetime.timedelta(minutes=5)))
                             reset_embed = discord.Embed(color=discord.Color.blurple(),title="Once Human Cargo Scramble Spawn")
                             reset_embed.add_field(name='', value=TRANSLATIONS[dest]['cargo_scramble_alert_message'].format(f'<t:{cargo_timestamp}:R>'), inline=False)
-                            #reset_embed.add_field(name='', value="You can now pick times to mute with </cargo_mute:1274272068417880117>.", inline=False)
                         elif alert_type == 'crate':
                             crate_timestamp = int(datetime.datetime.timestamp(time_now.replace(minute=0, second=0, microsecond=0)))
                             reset_embed = discord.Embed(color=discord.Color.blurple(),title="Once Human Gear/Weapon Crates Reset")
                             reset_embed.add_field(name='', value=TRANSLATIONS[dest]['crate_respawn_alert_message'].format(f'<t:{crate_timestamp}:t>'), inline=False)
-                            #reset_embed.add_field(name='', value="You can now pick times to mute with </crate_mute:1274272068417880116>.", inline=False)
                             reset_embed.set_footer(text=TRANSLATIONS[dest]['crate_respawn_footer'])
-                        await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed) # type: ignore
+                        if auto_delete:
+                            msg = await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed, wait=True)
+                            await msg.delete(delay=14370)
+                        else:
+                            await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed)
                         guilds_sent += 1
                     except Exception as e:
-                        print(f"Deleted {cur_chan.name} (channel_id: {channel_id}) @ {cur_chan.guild.name} (guild_id: {cur_chan.guild.id}) due to {e}") # type: ignore
+                        print(f"Deleted {cur_chan.name} (channel_id: {channel_id}) @ {cur_chan.guild.name} (guild_id: {cur_chan.guild.id}) due to {e}")
                         async with engine.begin() as conn:
                             if alert_type == 'cargo':
                                 await conn.execute(delete(CargoScrambleChannel).filter_by(channel_id=channel_id))
@@ -162,7 +169,7 @@ class TimerCog(commands.Cog):
             else:
                 break
         else:
-            raise err # type: ignore
+            raise err
 
 
     @app_commands.command(name='check_timers', description='Returns all running timer jobs.')
@@ -192,7 +199,6 @@ class TimerCog(commands.Cog):
             next_crate_time_timestamp = int(datetime.datetime.timestamp(crate_job.next_run_time))
             next_cargo_time_timestamp = int(datetime.datetime.timestamp(cargo_job.next_run_time + datetime.timedelta(minutes=5)))
             await interaction.followup.send(content=TRANSLATIONS[dest]['next_respawns_message'].format(f"{time_now.hour:02d}", f"{time_now.minute:02d}", f"<t:{next_crate_time_timestamp}:F>", f"<t:{int(next_crate_time_timestamp)}:R>", f"<t:{next_cargo_time_timestamp}:F>", f"<t:{int(next_cargo_time_timestamp)}:R>"), wait=True)
-            #await msg.delete(delay=60)
         else:
             pass
 

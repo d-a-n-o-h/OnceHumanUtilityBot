@@ -1,6 +1,7 @@
 import datetime
 import random
 import sys
+import calendar
 import unicodedata
 from typing import Literal, Optional
 
@@ -9,14 +10,15 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
 from googletrans import Translator
-from sqlalchemy import delete, func, select, or_
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
-from modals.channels import CargoScrambleChannel, CrateRespawnChannel, CrateMutes, CargoMutes
-from modals.command_uses import CommandUses
-from modals.guild_blacklist import GuildBlacklist
+from models.channels import (CargoMutes, CargoScrambleChannel, CrateMutes,
+                             CrateRespawnChannel, AutoDelete)
+from models.command_uses import CommandUses
+from models.guild_blacklist import GuildBlacklist
 
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
@@ -29,9 +31,9 @@ else:
 
 
 def me_only(interaction: discord.Interaction) -> bool:
-    return interaction.user.id == int(config["MY_USER_ID"]) # type: ignore
+    return interaction.user.id == int(config["MY_USER_ID"])
 
-MY_GUILD_ID = discord.Object(int(config["TESTING_GUILD_ID"])) # type: ignore
+MY_GUILD_ID = discord.Object(int(config["TESTING_GUILD_ID"]))
 
 
 class UtilsCog(commands.Cog):
@@ -55,10 +57,22 @@ class UtilsCog(commands.Cog):
                 lambda cg: cg.name.lower() == group.lower(),
                 await bot.tree.fetch_commands(),
             )
-            for child in cmd_group.options:  # type: ignore
+            for child in cmd_group.options:
                 if child.name.lower() == cmd.lower():
                     return child
                 
+
+    @app_commands.command(name='utility', description='UTILITY!')
+    @app_commands.guild_install()
+    @app_commands.check(me_only)
+    @app_commands.guilds(MY_GUILD_ID)   
+    async def utility_cmd(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        async with engine.begin() as conn:
+            muted_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.zero==False))
+            muted_channels = muted_channels.all()
+        await interaction.edit_original_response(content=f"{len(muted_channels)}: {muted_channels}")
+        
 
     @app_commands.command(name='mute_stats', description='How many guilds have muted an alert separated by time.')
     @app_commands.guild_install()
@@ -106,17 +120,17 @@ class UtilsCog(commands.Cog):
     @app_commands.guilds(MY_GUILD_ID)   
     async def stats(self, interaction: discord.Interaction):
         async with engine.begin() as conn:
-            command_usage = await conn.execute(select(CommandUses).order_by(CommandUses.last_used.desc()).filter_by(admin=False))
+            command_usage = await conn.execute(select(CommandUses).order_by(CommandUses.last_used.desc()).filter_by(admin=False).limit(7))
             command_usage = command_usage.fetchall()
         await engine.dispose(close=True)
         stats_embed = discord.Embed(title="Bot Stats", color=discord.Color.gold())
-        stats_embed.description = f"Up since: {self.bot.uptime_timestamp}"
+        stats_embed.description = f"Up since: {self.bot.uptime_timestamp}\nLatency: `{round(self.bot.latency * 1000, 1)}ms`\nShards: `{len(self.bot.shards)}`"
         stats_embed.set_thumbnail(url=self.bot.user.avatar.url)
         stats_embed.set_footer(text=f"{len(self.bot.guilds):,} Guilds")
         for cmd in command_usage:
             last_used_timestamp = int(datetime.datetime.timestamp(cmd.last_used))
             stats_embed.add_field(name=cmd.name, value=f"Uses: {cmd.num_uses:,} || Last used: <t:{last_used_timestamp}:R>", inline=False)
-        await interaction.response.send_message(embed=stats_embed, delete_after=120)
+        await interaction.response.send_message(embed=stats_embed, delete_after=60)
 
 
     @app_commands.command(name='bl_setup', description='Setup the guild_blacklist database.')
@@ -192,7 +206,7 @@ class UtilsCog(commands.Cog):
             else:
                 break
         else:
-            raise err # type: ignore
+            raise err
         msg = await interaction.followup.send(content=f"Sent to {guilds_sent} out of {len(self.bot.guilds)}.", wait=True)
         await msg.delete(delay=10)
 

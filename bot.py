@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import sys
+import traceback
 from typing import Literal, Optional, Final
 
 import discord
@@ -14,10 +15,14 @@ config = dotenv_values(".env")
 utc = datetime.timezone.utc
 
 
-class OHTimerBot(commands.Bot):
+class OHTimerBot(commands.AutoShardedBot):
 
     def __init__(self):
         self.initial_extensions = (
+            'cogs.crate_commands',
+            'cogs.cargo_commands',
+            'cogs.alert_commands',
+            'cogs.feedback',
             'cogs.bot_commands',
             'cogs.bot_events',
             'cogs.timer',
@@ -26,7 +31,6 @@ class OHTimerBot(commands.Bot):
         self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(datetime.datetime.now(tz=utc)))}:R>" 
         intents = discord.Intents.default()
         
-
         super().__init__(
             intents=intents,
             command_prefix=commands.when_mentioned_or("<>")
@@ -47,6 +51,7 @@ class OHTimerBot(commands.Bot):
             try:
                 await self.load_extension(extension)
             except Exception as e:
+                traceback.print_exception(type(e), e, e.__traceback__)
                 print(f"Failed to load extension {extension}.")
 
         
@@ -75,6 +80,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
         else:
             msg = await interaction.followup.send(content=TRANSLATIONS[dest]['feedback_error'].format(error), wait=True)
             await msg.delete(delay=60)
+    traceback.print_exception(type(error), error, error.__traceback__)
 
 
 @bot.command()
