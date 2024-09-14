@@ -6,33 +6,33 @@ https://discord.com/oauth2/authorize?client_id=1264198984306790431
 
 # Bot Commands
 ### `/feedback`:
-(30 minute cooldown per user)
 - Opens a form to provide anonymous feedback or bug report about the bot.
  - Reports are visible to all members of the support server to vote and/or comment on.
 ### `/search_deviant` `dev_name`:
-(30 second cooldown per user)
-- You can now search a small database for information on deviants.
+- Search a small database for information on deviants.
 ### `/next`:
-(30 second cooldown per user)
-- Sends an ephemeral message (only the user who runs the command will see it) that shows the current UTC time, the list of crate and cargo scramble respawn times, and a timestamp with your local date/time of the next respawn.
+- Sends an ephemeral message that shows the current UTC time, the list of crate and cargo scramble respawn times, and a timestamp with your local date/time of the next respawn.
 
 ## <- ADMINISTRATOR ONLY COMMANDS ->
 ### `/crate setup` `channel` `[role]`:
 - Set the text/announcement channel that the weapon/gear crate respawn alert will be sent.
-- [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention (default behavior).
+- [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention.
 ### `/crate auto_delete` and `/cargo auto_delete` `On/Off`:
-- Set alerts to auto delete themselves prior to the next one sending.
+- Set `auto_delete` to `On` to have previous alerts delete themselves when new alerts come in.
 ### `/cargo setup` `channel` `[role]`:
 - Set the text/announcement channel that the Cargo Scramble alert will be sent.
-- [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention (default behavior).
+- [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention.
 ### `/crate mute` and `/cargo mute`:
-(30 second cooldown per user)
 - Mutes alerts for times you pick.
-### `/test_alert`:
-(15 second cooldown per user)
-- Sends a test alert to your designated channel to ensure it works properly.  This command is pretty much obsolete now that `/setup` has some checks built into it.
+### `/weekly controller_setup`, `/weekly purification_setup`, `/weekly sproutlet_setup` `channel` `day/hour` `[role]` `[auto_delete]`:
+- Set the text channel the alert will be sent.
+- [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention.
+- [OPTIONAL] Set `auto_delete` to `On` to have previous alerts delete themselves when new alerts come in.
+### `/medics setup` `channel` `[role]` `[auto_delete]`:
+- Set the text channel the alert will be sent.
+- [OPTIONAL] Include a role to be mentioned in the alerts.  Leave blank for no role mention.
+- [OPTIONAL] Set `auto_delete` to `On` to have previous alerts delete themselves when new alerts come in.
 ### `/remove_data`:
-(1 hour cooldown per user)
 - Deletes any records in the database with the guild_id of the guild the command was run in.
 
 ## Feel free to send any issues or suggestions for new features/changes.
