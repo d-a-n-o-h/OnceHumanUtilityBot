@@ -1,7 +1,6 @@
 import datetime
-import sys
 
-from typing import Final, Optional
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -9,7 +8,6 @@ from discord.ext import commands
 from dotenv import dotenv_values
 from googletrans import Translator
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
 from models.deviant import Deviants
@@ -17,13 +15,6 @@ from translations import TRANSLATIONS
 
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
-
-if config["DATABASE_STRING"]:
-    engine: Final = create_async_engine(config["DATABASE_STRING"])
-else:
-    print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
-    sys.exit(1)
-
 
 
 class CommandsCog(commands.Cog):
@@ -57,9 +48,9 @@ class CommandsCog(commands.Cog):
         dest = LANGUAGES.get(str(interaction.guild_locale).lower())
         if dest is None:
             dest = 'en'
-        async with engine.begin() as conn:
+        async with self.bot.engine.begin() as conn:
             deviant = await conn.execute(select(Deviants).filter(Deviants.name.ilike(f"%{dev_name}%")))
-            deviant = deviant.one_or_none()
+            deviant = deviant.first()
         if deviant is not None:
             dev_embed = discord.Embed(title=self.translator.translate(str(deviant.name), dest=dest).text, description=self.translator.translate(str(deviant.sub_type), dest=dest).text)
             try:

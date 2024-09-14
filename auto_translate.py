@@ -1,9 +1,6 @@
-import collections
-
-from googletrans import Translator  # type: ignore
+from googletrans import Translator
 
 from languages import LANGUAGES
-#from translations import TRANSLATIONS
 
 translator = Translator()
 
@@ -48,6 +45,31 @@ strings_to_translate = [
     {'setup_crate_success': 'Your crate alerts output channel has been set to {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
     {'setup_cargo_channel_ping': '{}, this channel is where cargo scramble alerts will be sent!'},
     {'setup_cargo_success': 'Your cargo scramble alerts output channel has been set to {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
+    # Support
+    {'support_title': 'Discord Invite Link'},
+    {'support_last_update': '-# Last update: {}'},
+    {'support_feedback': 'You can send an anonymous feedback or bug report with {}.'},
+    {'support_reload': 'If a command isn\'t working as expected, reload (CTRL+R) or restart Discord.'},
+    {'support_permissions': 'After that, verify the bot user has the correct permissions for "View Channel", "Send Messages", and "Embed Links" marked as ✅ on the channel you are trying to use.'},
+    # Purification/Controller
+    {'purification_channel_alert_error': '[PURIFICATION] The bot is not able to send messages/view the channel in the channel you have chosen for Purification reset alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel, Send Messages, and Embed Links set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server.'},
+    {'controller_channel_alert_error': '[CONTROLLER] The bot is not able to send messages/view the channel in the channel you have chosen for Controller reset alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel, Send Messages, and Embed Links set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server.'},
+    {'setup_purification_success': 'Your purification reset alerts output channel has been set to {} on {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
+    {'setup_controller_success': 'Your controller reset alerts output channel has been set to {} on {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
+    {'purification_reset_alert_message': 'This is the weekly Purification reset alert message.'},
+    {'controller_reset_alert_message': 'This is the weekly Controller reset alert message.'},
+    {'setup_purification_channel_ping': '{}, this channel is where purification alerts will be sent!'},
+    {'setup_controller_channel_ping': '{}, this channel is where controller alerts will be sent!'},
+    {'sproutlet_channel_alert_error': '[SPROUTLET] The bot is not able to send messages/view the channel in the channel you have chosen for Controller reset alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel, Send Messages, and Embed Links set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server.'},
+    {'setup_sproutlet_success': 'Your sproutlet alerts output channel has been set to {} at {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
+    {'setup_sproutlet_channel_ping': '{}, this channel is where sproutlet alerts will be sent!'},
+    # Medics/Trunks
+    {'sproutlet_alert_message': 'The sproutlet event has a chance to spawn {}!\nRandomly spawns at a settlement in Chalk Peak, Lone Wolf Wastes, or Blackheart Region and lasts for 20 minutes.'},
+    {'medics_channel_alert_error': '[MEDICS/TRUNKS] The bot is not able to send messages/view the channel in the channel you have chosen for medic/trunk respawn alerts, {}.\nPlease edit the channel settings by right clicking the channel name and make sure the bot or it\'s role has View Channel, Send Messages, and Embed Links set to the ✅ (green check) and try again.\n-# If you need assistance, please join the support server,'},
+    {'setup_medics_channel_ping': '{}, this channel is where medics/trunks respawn alerts will be sent!'},
+    {'setup_medics_success': 'Your medics/trunks respawn alerts output channel has been set to {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
+    {'medics_respawn_alert_message': 'This is the {} reset announcement.'},
+    {'medics_respawn_footer': 'Log out to the main menu and log back in to see the reset medics/trunks.'},
     ]
 
 class AutoVivification(dict):

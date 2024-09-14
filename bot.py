@@ -7,9 +7,11 @@ from typing import Literal, Optional, Final
 import discord
 from discord.ext import commands
 from dotenv import dotenv_values
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
 from translations import TRANSLATIONS
+from cogs import EXTENSIONS
 
 config = dotenv_values(".env")
 utc = datetime.timezone.utc
@@ -18,33 +20,26 @@ utc = datetime.timezone.utc
 class OHTimerBot(commands.AutoShardedBot):
 
     def __init__(self):
-        self.initial_extensions = (
-            'cogs.crate_commands',
-            'cogs.cargo_commands',
-            'cogs.alert_commands',
-            'cogs.feedback',
-            'cogs.bot_commands',
-            'cogs.bot_events',
-            'cogs.timer',
-            'cogs.utils'
-            )
-        self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(datetime.datetime.now(tz=utc)))}:R>" 
+        self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(datetime.datetime.now(tz=utc)))}:R>"
+        self.last_update = f"<t:1726295700:f>"
         intents = discord.Intents.default()
+        self.initial_extensions = EXTENSIONS
+        if config["DATABASE_STRING"]:
+            self.engine: Final = create_async_engine(config["DATABASE_STRING"], pool_size=50, max_overflow=10, pool_recycle=30)
+        else:
+            print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
+            sys.exit(1)
+        
         
         super().__init__(
             intents=intents,
-            command_prefix=commands.when_mentioned_or("<>")
+            command_prefix=commands.when_mentioned_or("<><><>")
             )
         
         if config["TESTING_GUILD_ID"]:
             self.testing_guild_id: Final[int] = int(config["TESTING_GUILD_ID"])
         else:
             self.testing_guild = None
-        if config["DATABASE_STRING"]:
-            self.db_string: Final[str] = config["DATABASE_STRING"]
-        else:
-            print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
-            sys.exit(1)
 
     async def setup_hook(self) -> None:
         for extension in self.initial_extensions:
@@ -56,7 +51,7 @@ class OHTimerBot(commands.AutoShardedBot):
 
         
     async def on_ready(self):
-        print(f"Logged in as {self.user.name} (ID# {self.user.id})")  # type: ignore
+        print(f"Logged in as {self.user.name} (ID# {self.user.id})")
 
 
 bot = OHTimerBot()
@@ -68,11 +63,11 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
     if dest is None:
         dest = 'en'
     if isinstance(error, discord.app_commands.CommandOnCooldown):
-        retry_time = round(error.retry_after, 2)
+        retry_time = round(error.retry_after, 0)
         if not interaction.response.is_done():
-            return await interaction.response.send_message(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(retry_time), ephemeral=True, delete_after=(error.retry_after/2))
+            return await interaction.response.send_message(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(f'{retry_time:,}'), ephemeral=True, delete_after=(error.retry_after/2))
         else:
-            msg = await interaction.followup.send(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(retry_time), wait=True)
+            msg = await interaction.followup.send(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(f'{retry_time:,}'), wait=True)
             await msg.delete(delay=(error.retry_after/2))
     else:
         if not interaction.response.is_done():

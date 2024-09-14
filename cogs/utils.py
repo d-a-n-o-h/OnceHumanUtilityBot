@@ -1,7 +1,5 @@
 import datetime
 import random
-import sys
-import calendar
 import unicodedata
 from typing import Literal, Optional
 
@@ -12,7 +10,6 @@ from dotenv import dotenv_values
 from googletrans import Translator
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
 from models.channels import (CargoMutes, CargoScrambleChannel, CrateMutes,
@@ -23,12 +20,6 @@ from models.guild_blacklist import GuildBlacklist
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
 
-if config["DATABASE_STRING"]:
-    engine = create_async_engine(config["DATABASE_STRING"])
-else:
-    print("Please set the DATABASE_STRING value in the .env file and restart the bot.")
-    sys.exit(1)
-
 
 def me_only(interaction: discord.Interaction) -> bool:
     return interaction.user.id == int(config["MY_USER_ID"])
@@ -36,10 +27,27 @@ def me_only(interaction: discord.Interaction) -> bool:
 MY_GUILD_ID = discord.Object(int(config["TESTING_GUILD_ID"]))
 
 
-class UtilsCog(commands.Cog):
+@app_commands.check(me_only)
+@app_commands.guilds(MY_GUILD_ID)
+@app_commands.guild_only()
+class UtilsCog(commands.GroupCog, name='utils'):
     def __init__(self, bot):
         self.bot = bot
         self.translator = Translator()
+
+    async def day_to_number(self, day: str) -> int:
+        day = day.lower()
+        days_to_num = {
+            'monday': 1,
+            'tuesday': 2,
+            'wednesday': 3,
+            'thursday': 4,
+            'friday': 5,
+            'saturday': 6, 
+            'sunday': 7,
+            'none': None
+            }
+        return days_to_num[day]
 
     def fix_unicode(self, str):
         fixed = unicodedata.normalize("NFKD", str).encode("ascii", "ignore").decode()
@@ -63,24 +71,17 @@ class UtilsCog(commands.Cog):
                 
 
     @app_commands.command(name='utility', description='UTILITY!')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)   
     async def utility_cmd(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        async with engine.begin() as conn:
-            muted_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(CrateMutes.zero==False))
-            muted_channels = muted_channels.all()
-        await interaction.edit_original_response(content=f"{len(muted_channels)}: {muted_channels}")
+        day = 'Tuesday'
+        dt_day_num = datetime.datetime.now(tz=utc).isoweekday()
+        day_num = await self.day_to_number(day)
+        await interaction.response.send_message(f"{dt_day_num} dt_day_num\n{day_num} day_num")
         
 
     @app_commands.command(name='mute_stats', description='How many guilds have muted an alert separated by time.')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
     async def mute_stats(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        async with engine.begin() as conn:
+        async with self.bot.engine.begin() as conn:
             total_cargo = await conn.execute(select(func.count(CargoScrambleChannel.guild_id)))
             total_cargo = total_cargo.scalar_one_or_none()
             total_crate = await conn.execute(select(func.count(CrateRespawnChannel.guild_id)))
@@ -109,20 +110,15 @@ class UtilsCog(commands.Cog):
             crate_sixteen = crate_sixteen.scalar_one_or_none()
             crate_twenty = await conn.execute(select(func.count(CrateMutes.guild_id)).where(CrateMutes.twenty==True))
             crate_twenty = crate_twenty.scalar_one_or_none()
-        await engine.dispose(close=True)
         msg = await interaction.edit_original_response(content=f"# Total Count\n## Cargo: `{cargo_mutes_count}`/`{total_cargo}` (`{round((cargo_mutes_count/total_cargo)*100, 2)}%`)\n## Crate: `{crate_mutes_count}`/`{total_crate}` (`{round((crate_mutes_count/total_crate)*100, 2)}%`)\n\n### Cargo\n- 12:00: `{cargo_twelve}`\n- 15:00: `{cargo_fifteen}`\n- 18:30: `{cargo_eighteen_thirty}`\n- 22:00: `{cargo_twenty_two}`\n\n### Crate\n- 00:00: `{crate_zero}`\n- 04:00: `{crate_four}`\n- 08:00: `{crate_eight}`\n- 12:00: `{crate_twelve}`\n- 16:00: `{crate_sixteen}`\n- 20:00: `{crate_twenty}`")
         await msg.delete(delay=30)
 
                 
     @app_commands.command(name='stats', description='Stats about the bot.')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)   
     async def stats(self, interaction: discord.Interaction):
-        async with engine.begin() as conn:
+        async with self.bot.engine.begin() as conn:
             command_usage = await conn.execute(select(CommandUses).order_by(CommandUses.last_used.desc()).filter_by(admin=False).limit(7))
             command_usage = command_usage.fetchall()
-        await engine.dispose(close=True)
         stats_embed = discord.Embed(title="Bot Stats", color=discord.Color.gold())
         stats_embed.description = f"Up since: {self.bot.uptime_timestamp}\nLatency: `{round(self.bot.latency * 1000, 1)}ms`\nShards: `{len(self.bot.shards)}`"
         stats_embed.set_thumbnail(url=self.bot.user.avatar.url)
@@ -134,13 +130,10 @@ class UtilsCog(commands.Cog):
 
 
     @app_commands.command(name='bl_setup', description='Setup the guild_blacklist database.')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
     async def bl_setup(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         guilds_added = 0
-        async with engine.begin() as conn:
+        async with self.bot.engine.begin() as conn:
             for guild in self.bot.guilds:
                 cur_strikes = await conn.execute(select(GuildBlacklist.strikes).filter_by(guild_id=guild.id))
                 cur_strikes = cur_strikes.scalar()
@@ -150,15 +143,11 @@ class UtilsCog(commands.Cog):
                 update = insert_stmt.on_conflict_do_nothing(constraint='guild_blacklist_unique_guild_id')
                 await conn.execute(update)
                 guilds_added += 1
-        await engine.dispose(close=True)
         msg = await interaction.edit_original_response(content=f"{guilds_added} guilds added.")
         await msg.delete(delay=10)
 
 
     @app_commands.command(name='manual_send', description='Manually send out an alert to subscribed channels.')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
     async def manual_alert_page(self, interaction: discord.Interaction, verify: Literal['no', 'yes']):
         if verify == 'no':
             return await interaction.response.send_message("Manual alert not sent.", ephemeral=True, delete_after=10)
@@ -168,17 +157,15 @@ class UtilsCog(commands.Cog):
                 guilds_sent = 0
                 time_now = datetime.datetime.now(tz=utc)
                 print(f"Timer! {time_now}")
-                async with engine.begin() as conn:
+                async with self.bot.engine.begin() as conn:
                     all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id))
                     all_channels = all_channels.all()
-                await engine.dispose(close=True)
                 random.shuffle(all_channels)
                 for channel_id, role_id in all_channels:
                     cur_chan = self.bot.get_channel(channel_id)
                     if not cur_chan:
-                        async with engine.begin() as conn:
+                        async with self.bot.engine.begin() as conn:
                             await conn.execute(delete(CrateRespawnChannel).filter_by(channel_id=channel_id))
-                        await engine.dispose(close=True)
                         continue
                     if cur_chan.guild:
                         role_to_mention = cur_chan.guild.get_role(role_id)
@@ -195,9 +182,8 @@ class UtilsCog(commands.Cog):
                         guilds_sent += 1
                     except Exception as e:
                         print(f"({channel_id}) Error: {e}")
-                        async with engine.begin() as conn:
+                        async with self.bot.engine.begin() as conn:
                             await conn.execute(delete(CrateRespawnChannel).filter_by(channel_id=channel_id))
-                        await engine.dispose(close=True)
                         continue
                 print(f"Sent to {guilds_sent} guilds.\nBot currently in {len(self.bot.guilds)} guilds.")
             except Exception as e:
@@ -212,9 +198,6 @@ class UtilsCog(commands.Cog):
 
 
     @app_commands.command(name='errors', description='Lists out the channels without permissions.')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
     async def list_errors(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         send_errors = 0
@@ -222,12 +205,11 @@ class UtilsCog(commands.Cog):
         channel_set_errors = 0
         all_channels_list = list()
         all_guilds_list = list()
-        async with engine.begin() as conn:
+        async with self.bot.engine.begin() as conn:
             all_channels = await conn.execute(select(CrateRespawnChannel.channel_id))
             all_channels = all_channels.all()
             all_guilds = await conn.execute(select(CrateRespawnChannel.guild_id))
             all_guilds = all_guilds.all()
-        await engine.dispose(close=True)
         for guild in all_guilds:
             all_guilds_list.append(guild[0])
         for channel in all_channels:
@@ -248,9 +230,6 @@ class UtilsCog(commands.Cog):
 
     @app_commands.command(name='reload', description='Reloads the cogs.')
     @app_commands.describe(extension="The extension to be reloaded.")
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
     async def reload(self, interaction: discord.Interaction, extension: str):
         if "cogs."+extension.lower() in self.bot.initial_extensions:
             try:
@@ -263,9 +242,6 @@ class UtilsCog(commands.Cog):
 
 
     @app_commands.command(name='reloadall', description='Reloads all the cogs, starts cogs that aren\'t loaded.')
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
     async def reloadall(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         successful_reload = []
@@ -283,9 +259,6 @@ class UtilsCog(commands.Cog):
 
     @app_commands.command(name='load', description='Loads the specified extension.')
     @app_commands.describe(extension="The extension to be loaded.")
-    @app_commands.guild_install()
-    @app_commands.check(me_only)
-    @app_commands.guilds(MY_GUILD_ID)
     async def load(self, interaction: discord.Interaction, extension: str):
         try:
             await self.bot.load_extension(f"cogs.{extension}")

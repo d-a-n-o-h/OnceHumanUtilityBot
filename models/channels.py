@@ -46,3 +46,12 @@ class AutoDelete(Base):
     guild_id: Mapped[int] = mapped_column(BigInteger)
     crate: Mapped[bool] = mapped_column(Boolean, default=False)
     cargo: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class Medics(Base):
+    __tablename__ = "medics"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    auto_delete: Mapped[bool] = mapped_column(Boolean)
+    guild_id: Mapped[int] = mapped_column(BigInteger)
+    channel_id: Mapped[int] = mapped_column(BigInteger)
+    role_id: Mapped[int] = mapped_column(BigInteger, default=None)
+    added_by: Mapped[int] = mapped_column(BigInteger)

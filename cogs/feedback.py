@@ -89,7 +89,7 @@ class FeedbackCog(commands.Cog):
         support_embed = discord.Embed(title=f"{interaction.guild.me.display_name} Quick Support", color=discord.Color.og_blurple(), url="https://discord.mycodeisa.meme")
         feedback_cmd = await self.find_cmd(self.bot, cmd='feedback')
         support_embed.add_field(name=TRANSLATIONS[dest]['support_title'], value='https://discord.mycodeisa.meme', inline=False)
-        support_embed.add_field(name='', value=TRANSLATIONS[dest]['support_title'].format("<t:1724783400:f>"), inline=False)
+        support_embed.add_field(name='', value=TRANSLATIONS[dest]['support_last_update'].format(self.bot.last_update), inline=False)
         support_embed.add_field(name='', value=TRANSLATIONS[dest]['support_feedback'].format(feedback_cmd.mention), inline=False)
         support_embed.add_field(name='', value=TRANSLATIONS[dest]['support_reload'], inline=False)
         support_embed.add_field(name='', value=TRANSLATIONS[dest]['support_permissions'], inline=False)
