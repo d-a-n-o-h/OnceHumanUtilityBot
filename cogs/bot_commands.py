@@ -16,6 +16,8 @@ from translations import TRANSLATIONS
 utc = datetime.timezone.utc
 config = dotenv_values(".env")
 
+def me_only(interaction: discord.Interaction) -> bool:
+    return interaction.user.id == int(config["MY_USER_ID"])
 
 class CommandsCog(commands.Cog):
     def __init__(self, bot):
@@ -37,17 +39,15 @@ class CommandsCog(commands.Cog):
             )
             for child in cmd_group.options:
                 if child.name.lower() == cmd.lower():
-                    return child                
-    
+                    return child
+
     
     @app_commands.command(name='search_deviant', description='Search the database for a deviant.')
     @app_commands.describe(dev_name='The ENGLISH name of the deviant you are searching for.  Less is more.')
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
     async def search_deviant(self, interaction: discord.Interaction, dev_name: str):
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         async with self.bot.engine.begin() as conn:
             deviant = await conn.execute(select(Deviants).filter(Deviants.name.ilike(f"%{dev_name}%")))
             deviant = deviant.first()

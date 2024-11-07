@@ -1,11 +1,12 @@
 
-from typing import Literal, Optional
+from typing import Literal, Optional, Final
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
 from models.channels import CrateMutes, CrateRespawnChannel, AutoDelete
@@ -17,6 +18,7 @@ config = dotenv_values(".env")
 class CrateMuteSelect(discord.ui.Select):
     def __init__(self):
         hours = [0,4,8,12,16,20]
+        self.engine: Final = create_async_engine(config["DATABASE_STRING"], pool_size=50, max_overflow=10, pool_recycle=30)
         options = []
         options.append(discord.SelectOption(label="None", value="None", default=False))
         for hour in hours:
@@ -26,7 +28,7 @@ class CrateMuteSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         if len(self.values) == 1 and self.values[0] == "None":
-            async with self.bot.engine.begin() as conn:
+            async with self.engine.begin() as conn:
                 insert_stmt = insert(CrateMutes).values(guild_id=interaction.guild_id,zero=False,four=False,eight=False,twelve=False,sixteen=False,twenty=False)
                 update_stmt = insert_stmt.on_conflict_do_update(constraint='crate_mutes_unique_guildid', set_={'zero': False, 'four': False, 'eight': False, 'twelve': False, 'sixteen': False, 'twenty': False})
                 await conn.execute(update_stmt)
@@ -40,7 +42,7 @@ class CrateMuteSelect(discord.ui.Select):
             muted_values.append(f"`{int(value):02}:00`")
             db_convert[db_dict[int(value)]] = True
         muted_values.sort()
-        async with self.bot.engine.begin() as conn:
+        async with self.engine.begin() as conn:
             insert_stmt = insert(CrateMutes).values(guild_id=interaction.guild_id,zero=db_convert['zero'],four=db_convert['four'],eight=db_convert['eight'],twelve=db_convert['twelve'],sixteen=db_convert['sixteen'],twenty=db_convert['twenty'])
             update_stmt = insert_stmt.on_conflict_do_update(constraint='crate_mutes_unique_guildid', set_={'zero': db_convert['zero'], 'four': db_convert['four'], 'eight': db_convert['eight'], 'twelve': db_convert['twelve'], 'sixteen': db_convert['sixteen'], 'twenty': db_convert['twenty'], })
             await conn.execute(update_stmt)
@@ -87,9 +89,7 @@ class CrateCog(commands.GroupCog, name='crate'):
     @app_commands.describe(role_to_mention="The role you want mentioned in the alert. Blank = None")
     async def crate_alert_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, role_to_mention: Optional[discord.Role] = None):
         await interaction.response.defer(ephemeral=True)
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['crate_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -106,21 +106,21 @@ class CrateCog(commands.GroupCog, name='crate'):
             autodelete_insert = insert(AutoDelete).values(crate=False,cargo=False,guild_id=interaction.guild_id)
             autodelete_insert = autodelete_insert.on_conflict_do_nothing(constraint='auto_delete_unique_guildid')
             await conn.execute(autodelete_insert)
+            crate_insert = insert(CrateMutes).values(guild_id=interaction.guild_id,zero=False,four=False,eight=False,twelve=False,sixteen=False,twenty=False)
+            crate_update = crate_insert.on_conflict_do_nothing(constraint='crate_mutes_unique_guildid')
+            await conn.execute(crate_update)
         await output_channel.send(content=TRANSLATIONS[dest]['setup_crate_channel_ping'].format(interaction.user.mention))
         return await interaction.followup.send(content=TRANSLATIONS[dest]['setup_crate_success'].format(output_channel.mention, role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True)
     
 
     @app_commands.command(name='auto_delete', description='Toggle Weapon/Gear Crate alerts to auto delete before the next post.')
     async def crate_auto_delete_toggle(self, interaction: discord.Interaction, auto_delete: Literal["On", "Off"]):
-        if auto_delete == "On":
-            auto_delete = True
-        elif auto_delete == "Off":
-            auto_delete = False
+        auto_dict = {"On": True, "Off": False}
         async with self.bot.engine.begin() as conn:
-            insert_stmt = insert(AutoDelete).values(guild_id=interaction.guild_id,crate=auto_delete)
-            update = insert_stmt.on_conflict_do_update(constraint='auto_delete_unique_guildid', set_={'crate': auto_delete})
+            insert_stmt = insert(AutoDelete).values(guild_id=interaction.guild_id,crate=auto_dict.get(auto_delete))
+            update = insert_stmt.on_conflict_do_update(constraint='auto_delete_unique_guildid', set_={'crate': auto_dict.get(auto_delete)})
             await conn.execute(update)
-        if auto_delete:
+        if auto_delete == "On":
             enabled = "ENABLED"
         else:
             enabled = "DISABLED"

@@ -63,9 +63,7 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
             auto_delete = True
         elif auto_delete == "Off":
             auto_delete = False
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['purification_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -80,7 +78,7 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
             update = insert_stmt.on_conflict_do_update(constraint='purification_reset_day_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id, 'reset_day': day_num, 'auto_delete': auto_delete})
             await conn.execute(update)
         await output_channel.send(content=TRANSLATIONS[dest]['setup_purification_channel_ping'].format(interaction.user.mention))
-        msg = await interaction.followup.send(content=TRANSLATIONS[dest]['setup_purification_success'].format(output_channel.mention, calendar.day_name[day_num-1], role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True, wait=True)
+        msg = await interaction.followup.send(content=TRANSLATIONS[dest]['setup_purification_success'].format(output_channel.mention, calendar.day_name[day_num-1] if day != "None" else 'None', role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True, wait=True)
         await msg.delete(delay=60)
     
 
@@ -93,13 +91,8 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
         # return await interaction.response.send_message("Still working on it!", ephemeral=True, delete_after=15)
         await interaction.response.defer(ephemeral=True)
         day_num = await self.day_to_number(day)
-        if auto_delete == "On":
-            auto_delete = True
-        elif auto_delete == "Off":
-            auto_delete = False
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        auto_dict = {"On": True, "Off": False}
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['controller_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -110,11 +103,11 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
         else:
             role_id = None
         async with self.bot.engine.begin() as conn:
-            insert_stmt = insert(Controller).values(guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,reset_day=day_num,auto_delete=auto_delete)
-            update = insert_stmt.on_conflict_do_update(constraint='controller_reset_day_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id, 'reset_day': day_num, 'auto_delete': auto_delete})
+            insert_stmt = insert(Controller).values(guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,reset_day=day_num,auto_delete=auto_dict.get(auto_delete))
+            update = insert_stmt.on_conflict_do_update(constraint='controller_reset_day_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id, 'reset_day': day_num, 'auto_delete': auto_dict.get(auto_delete)})
             await conn.execute(update)
         await output_channel.send(content=TRANSLATIONS[dest]['setup_controller_channel_ping'].format(interaction.user.mention))
-        msg = await interaction.followup.send(content=TRANSLATIONS[dest]['setup_controller_success'].format(output_channel.mention, calendar.day_name[day_num-1], role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True, wait=True)
+        msg = await interaction.followup.send(content=TRANSLATIONS[dest]['setup_controller_success'].format(output_channel.mention, calendar.day_name[day_num-1] if isinstance(day_num, int) else 'None', role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True, wait=True)
         await msg.delete(delay=60)
 
 
@@ -125,13 +118,8 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
     @app_commands.describe(auto_delete="'On' if you want the message to delete itself before the next one is sent.")
     async def sproutlet_alert_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, hour: Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23], role_to_mention: Optional[discord.Role] = None, auto_delete: Optional[Literal['On', 'Off']] = 'Off'):
         await interaction.response.defer(ephemeral=True)
-        if auto_delete == "On":
-            auto_delete = True
-        elif auto_delete == "Off":
-            auto_delete = False
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        auto_dict = {"On": True, "Off": False}
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['sproutlet_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -142,8 +130,8 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
         else:
             role_id = None
         async with self.bot.engine.begin() as conn:
-            insert_stmt = insert(Sproutlet).values(guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,hour=int(hour),auto_delete=auto_delete)
-            update = insert_stmt.on_conflict_do_update(constraint='sproutlet_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id, 'hour': int(hour), 'auto_delete': auto_delete})
+            insert_stmt = insert(Sproutlet).values(guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,hour=int(hour),auto_delete=auto_dict.get(auto_delete))
+            update = insert_stmt.on_conflict_do_update(constraint='sproutlet_unique_guildid', set_={'channel_id': output_channel.id, 'role_id': role_id, 'hour': int(hour), 'auto_delete': auto_dict.get(auto_delete)})
             await conn.execute(update)
         await output_channel.send(content=TRANSLATIONS[dest]['setup_sproutlet_channel_ping'].format(interaction.user.mention))
         msg = await interaction.followup.send(content=TRANSLATIONS[dest]['setup_sproutlet_success'].format(output_channel.mention, f'`{hour}:15 UTC`', role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True, wait=True)

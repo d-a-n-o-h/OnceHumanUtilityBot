@@ -9,7 +9,7 @@ from sqlalchemy import delete, select
 
 from languages import LANGUAGES
 from models.channels import (AutoDelete, CargoMutes, CargoScrambleChannel,
-                             CrateMutes, CrateRespawnChannel)
+                             CrateMutes, CrateRespawnChannel, Medics)
 from models.weekly_resets import Controller, Purification, Sproutlet
 from translations import TRANSLATIONS
 
@@ -44,9 +44,7 @@ class AlertCog(commands.Cog):
     async def test_alert_command(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         alert_success = list()
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         async with self.bot.engine.begin() as conn:
             crate_data = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).filter_by(guild_id=interaction.guild_id))
             crate_data = crate_data.one_or_none()
@@ -103,9 +101,7 @@ class AlertCog(commands.Cog):
     @app_commands.checks.cooldown(1, 3600, key=lambda i: (i.guild_id, i.user.id))
     async def remove_data(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         async with self.bot.engine.begin() as conn:
             await conn.execute(delete(CrateRespawnChannel).filter_by(guild_id=interaction.guild_id))
             await conn.execute(delete(CargoScrambleChannel).filter_by(guild_id=interaction.guild_id))
@@ -115,6 +111,7 @@ class AlertCog(commands.Cog):
             await conn.execute(delete(Purification).filter_by(guild_id=interaction.guild_id))
             await conn.execute(delete(Controller).filter_by(guild_id=interaction.guild_id))
             await conn.execute(delete(Sproutlet).filter_by(guild_id=interaction.guild_id))
+            await conn.execute(delete(Medics).filter_by(guild_id=interaction.guild_id))
         return await interaction.followup.send(content=TRANSLATIONS[dest]['remove_data_success'])
         
 

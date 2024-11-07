@@ -40,13 +40,8 @@ class MedicsCog(commands.GroupCog, name='medics'):
     @app_commands.describe(role_to_mention="The role you want mentioned in the alert. Blank = None")
     async def cargoscramble_alert_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, role_to_mention: Optional[discord.Role] = None, auto_delete: Optional[Literal['On', 'Off']] = 'Off'):
         await interaction.response.defer(ephemeral=True)
-        if auto_delete == "On":
-            auto_delete = True
-        elif auto_delete == "Off":
-            auto_delete = False
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        auto_dict = {"On": True, "Off": False}
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['medics_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -57,8 +52,8 @@ class MedicsCog(commands.GroupCog, name='medics'):
         else:
             role_id = None
         async with self.bot.engine.begin() as conn:
-            insert_stmt = insert(Medics).values(auto_delete=auto_delete,guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,added_by=interaction.user.id)
-            update = insert_stmt.on_conflict_do_update(constraint='medics_unique_guildid', set_={'auto_delete': auto_delete, 'channel_id': output_channel.id, 'role_id': role_id, 'added_by': interaction.user.id})
+            insert_stmt = insert(Medics).values(auto_delete=auto_dict.get(auto_delete),guild_id=interaction.guild_id,channel_id=output_channel.id,role_id=role_id,added_by=interaction.user.id)
+            update = insert_stmt.on_conflict_do_update(constraint='medics_unique_guildid', set_={'auto_delete': auto_dict.get(auto_delete), 'channel_id': output_channel.id, 'role_id': role_id, 'added_by': interaction.user.id})
             await conn.execute(update)
         await output_channel.send(content=TRANSLATIONS[dest]['setup_medics_channel_ping'].format(interaction.user.mention))
         return await interaction.followup.send(content=TRANSLATIONS[dest]['setup_medics_success'].format(output_channel.mention, role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True)

@@ -28,9 +28,7 @@ class Feedback(discord.ui.Modal, title='Feedback/Bug Report'):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         if self.feedback_type.value.lower() == 'feedback' or self.feedback_type.value.lower() == 'bug':
             feedback_forum: discord.ForumChannel = self.bot.get_channel(int(config['FEEDBACK_CHAN']))  # type: ignore
             if self.feedback_type.value.lower() == 'feedback':
@@ -42,15 +40,12 @@ class Feedback(discord.ui.Modal, title='Feedback/Bug Report'):
             await feedback_forum.create_thread(name=f'{self.feedback_type.value.capitalize()} Report', applied_tags=post_tag, embed=feedback_embed, allowed_mentions=discord.AllowedMentions.none())
             await interaction.response.send_message(content=TRANSLATIONS[dest]['feedback_response'].format(self.feedback_type.value.lower(), interaction.user.mention, self.feedback.value), ephemeral=True, delete_after=60, suppress_embeds=True)
         else:
-            await interaction.response.send_message(content=TRANSLATIONS[dest]['feedback_wrong_choice'], ephemeral=True, delete_after=30)
+            await interaction.response.send_message(content=TRANSLATIONS[dest]['feedback_wrong_choice'].format("Feedback", "Bug"), ephemeral=True, delete_after=30)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception) -> None:
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
-        await interaction.response.send_message(TRANSLATIONS[dest]['feedback_error'].format(error), ephemeral=True)
-
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         traceback.print_exception(type(error), error, error.__traceback__)
+        await interaction.response.send_message(TRANSLATIONS[dest]['feedback_error'].format(error), ephemeral=True)
 
 
 class FeedbackCog(commands.Cog):
@@ -81,11 +76,9 @@ class FeedbackCog(commands.Cog):
 
     @app_commands.command(name='support', description='Send an embed with a link to the support server.')
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
-    @app_commands.checks.cooldown(1, 3600, key=lambda i: (i.guild_id, i.user.id))
+    @app_commands.checks.cooldown(1, 60, key=lambda i: (i.guild_id, i.user.id))
     async def send_support_embed(self, interaction: discord.Interaction):
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-        if dest is None:
-            dest = 'en'
+        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
         support_embed = discord.Embed(title=f"{interaction.guild.me.display_name} Quick Support", color=discord.Color.og_blurple(), url="https://discord.mycodeisa.meme")
         feedback_cmd = await self.find_cmd(self.bot, cmd='feedback')
         support_embed.add_field(name=TRANSLATIONS[dest]['support_title'], value='https://discord.mycodeisa.meme', inline=False)

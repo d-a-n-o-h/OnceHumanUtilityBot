@@ -1,7 +1,8 @@
 import datetime
 import random
 import unicodedata
-from typing import Literal, Optional
+from time import perf_counter
+from typing import List, Literal, Optional
 
 import discord
 from discord import app_commands
@@ -12,8 +13,10 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from languages import LANGUAGES
-from models.channels import (CargoMutes, CargoScrambleChannel, CrateMutes,
+from models.channels import (Medics, CargoMutes, CargoScrambleChannel, CrateMutes,
                              CrateRespawnChannel, AutoDelete)
+from models.weekly_resets import Purification, Controller, Sproutlet
+from translations import TRANSLATIONS
 from models.command_uses import CommandUses
 from models.guild_blacklist import GuildBlacklist
 
@@ -49,6 +52,22 @@ class UtilsCog(commands.GroupCog, name='utils'):
             }
         return days_to_num[day]
 
+    async def send_log(self, type: str, alert_type: str, message: str, silent: bool = False):
+        log_channel: discord.TextChannel = self.bot.get_channel(int(config["LOG_CHAN"]))
+        log_embed = discord.Embed(description=message[:4096])
+        if type == 'error':
+            log_embed.color = discord.Color.red()
+            log_embed.title = f"Error"
+        elif type == 'warn':
+            log_embed.color = discord.Color.orange()
+            log_embed.title = f"Warning"
+        elif type == 'info':
+            log_embed.color = discord.Color.blue()
+            log_embed.title = f"Info"
+        log_embed.title += f" - {alert_type.upper()}"
+        msg = await log_channel.send(embed=log_embed, silent=silent)
+        return await msg.delete(delay=7200)
+
     def fix_unicode(self, str):
         fixed = unicodedata.normalize("NFKD", str).encode("ascii", "ignore").decode()
         return fixed
@@ -68,14 +87,23 @@ class UtilsCog(commands.GroupCog, name='utils'):
             for child in cmd_group.options:
                 if child.name.lower() == cmd.lower():
                     return child
-                
+
 
     @app_commands.command(name='utility', description='UTILITY!')
-    async def utility_cmd(self, interaction: discord.Interaction):
-        day = 'Tuesday'
-        dt_day_num = datetime.datetime.now(tz=utc).isoweekday()
-        day_num = await self.day_to_number(day)
-        await interaction.response.send_message(f"{dt_day_num} dt_day_num\n{day_num} day_num")
+    async def utility_cmd(self, interaction: discord.Interaction, filter: int):
+        await interaction.response.defer()
+        async with self.bot.engine.begin() as conn:
+            muted_guilds = await conn.execute(select(CrateMutes.guild_id))
+            muted_guilds = muted_guilds.all()
+            muted_guilds = [g_id[0] for g_id in muted_guilds]
+            for guild in self.bot.guilds:
+                if guild.id not in muted_guilds:
+                    crate_insert = insert(CrateMutes).values(guild_id=guild.id,zero=False,four=False,eight=False,twelve=False,sixteen=False,twenty=False)
+                    crate_update = crate_insert.on_conflict_do_update(constraint='crate_mutes_unique_guildid', set_={'zero': False, 'four': False, 'eight': False, 'twelve': False, 'sixteen': False, 'twenty': False})
+                    await conn.execute(crate_update)
+                    await interaction.followup.send(f"Added guild_id {guild.id}.")
+            await interaction.followup.send(f"Done.")
+
         
 
     @app_commands.command(name='mute_stats', description='How many guilds have muted an alert separated by time.')
@@ -148,44 +176,128 @@ class UtilsCog(commands.GroupCog, name='utils'):
 
 
     @app_commands.command(name='manual_send', description='Manually send out an alert to subscribed channels.')
-    async def manual_alert_page(self, interaction: discord.Interaction, verify: Literal['no', 'yes']):
+    async def manual_alert_page(self, interaction: discord.Interaction, verify: Literal['no', 'yes'], alert_type: Literal['cargo', 'crate', 'purification', 'controller', 'sproutlet', 'medics']):
         if verify == 'no':
             return await interaction.response.send_message("Manual alert not sent.", ephemeral=True, delete_after=10)
         await interaction.response.defer(ephemeral=True)
+        start = perf_counter()
         for _ in range(5):
             try:
                 guilds_sent = 0
+                errors = 0
                 time_now = datetime.datetime.now(tz=utc)
-                print(f"Timer! {time_now}")
+                print(f"[{alert_type.upper()} Manual] Timer start: {time_now}")
                 async with self.bot.engine.begin() as conn:
-                    all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id))
+                    if alert_type == 'cargo':
+                        qry_filter = {11: CargoMutes.twelve==False, 14: CargoMutes.fifteen==False, 18: CargoMutes.eighteen_thirty==False, 21: CargoMutes.twenty_two==False}
+                        all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(qry_filter.get(time_now.hour)))
+                    elif alert_type == 'crate':
+                        qry_filter = {0: CrateMutes.zero==False, 4: CrateMutes.four==False, 8: CrateMutes.eight==False, 12: CrateMutes.twelve==False, 16: CrateMutes.sixteen==False, 20: CrateMutes.twenty==False}
+                        all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(qry_filter.get(time_now.hour)))
+                    elif alert_type == 'purification':
+                        day_num = datetime.datetime.now(tz=utc).isoweekday()
+                        all_channels = await conn.execute(select(Purification.channel_id, Purification.role_id, Purification.auto_delete).filter(Purification.reset_day==day_num))
+                    elif alert_type == 'controller':
+                        day_num = datetime.datetime.now(tz=utc).isoweekday()
+                        all_channels = await conn.execute(select(Controller.channel_id, Controller.role_id, Controller.auto_delete).filter(Controller.reset_day==day_num))
+                    elif alert_type == 'sproutlet':
+                        all_channels = await conn.execute(select(Sproutlet.channel_id, Sproutlet.role_id, Sproutlet.auto_delete).filter(Sproutlet.hour==time_now.hour))
+                    elif alert_type == 'medics':
+                        all_channels = await conn.execute(select(Medics.channel_id, Medics.role_id, Medics.auto_delete))
                     all_channels = all_channels.all()
+                    if len(all_channels) == 0:
+                        return await self.send_log('info', alert_type+" - Manual", f"Sent to 0 guilds.\nBot currently in {len(self.bot.guilds):,} guilds.", silent=True)
                 random.shuffle(all_channels)
-                for channel_id, role_id in all_channels:
+                for channel_id, role_id, auto_delete in all_channels:
+                    perm_errors = []
+                    role_to_mention = None
                     cur_chan = self.bot.get_channel(channel_id)
-                    if not cur_chan:
-                        async with self.bot.engine.begin() as conn:
-                            await conn.execute(delete(CrateRespawnChannel).filter_by(channel_id=channel_id))
-                        continue
-                    if cur_chan.guild:
+                    if cur_chan is None:
+                        await self.purge_channel(alert_type=alert_type, channel_id=channel_id)
+                        await self.send_log('error', alert_type+" - Manual", f"Deleted {channel_id} due to channel not found.")
+                        errors += 1
+                        try:
+                            await cur_chan.guild.system_channel.send(f"Your {alert_type} channel was deleted from the bot due to the bot not being able to find the channel.  Please re-add it with the appropriate setup command.")
+                            continue
+                        except:
+                            continue
+                    if not cur_chan.permissions_for(cur_chan.guild.me).send_messages:
+                        perm_errors.append('Send Messages')
+                    if not cur_chan.permissions_for(cur_chan.guild.me).view_channel:
+                        perm_errors.append('View Channel')
+                    if not cur_chan.permissions_for(cur_chan.guild.me).embed_links:
+                        perm_errors.append('Embed Links')
+                    if len(perm_errors) > 0:
+                        errors += 1
+                        await self.purge_channel(alert_type=alert_type, channel_id=channel_id)
+                        await self.send_log('error', alert_type+" - Manual", f"Deleted {cur_chan.name} (channel_id: {channel_id}) @ {cur_chan.guild.name} (guild_id: {cur_chan.guild.id}) due to missing `{', '.join(perm_errors)}` permission.")
+                        try:
+                            await cur_chan.guild.system_channel.send(f"Your {alert_type} channel was deleted from the bot due to missing `{', '.join(perm_errors)}` permission.  Please re-add it with the appropriate setup command.")
+                            print(f"Sent error message for {cur_chan.name} to {cur_chan.guild.name} - {cur_chan.guild.system_channel.name}")
+                            continue
+                        except:
+                            continue
+                    if role_id is not None:
                         role_to_mention = cur_chan.guild.get_role(role_id)
-                    else:
-                        role_to_mention = None
                     try:
-                        dest = LANGUAGES.get(str(cur_chan.guild.preferred_locale).lower())
-                        reset_embed = discord.Embed(color=discord.Color.blurple(),title=self.translator.translate("Once Human Gear/Weapon Crates Reset", dest=dest).text)
-                        time_now = time_now.replace(minute=0, second=0, microsecond=0)
-                        reset_embed.add_field(name='', value=self.translator.translate(f"This is the <t:{int(datetime.datetime.timestamp(time_now))}:t> reset announcement.", dest=dest).text)
-                        reset_embed.add_field(name='', value=self.translator.translate(f"This was sent manually due to an error with the automatic alert.", dest=dest).text)
-                        reset_embed.set_footer(text=self.translator.translate("Log out to the main menu and log back in to see the reset chests.", dest=dest).text)
-                        await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed)
+                        dest = LANGUAGES.get(str(cur_chan.guild.preferred_locale).lower(), 'en')
+                        embed_titles = {
+                            'cargo': TRANSLATIONS[dest]['cargo_embed_title'],
+                            'crate': TRANSLATIONS[dest]['crate_embed_title'],
+                            'purification': TRANSLATIONS[dest]['purification_embed_title'],
+                            'controller': TRANSLATIONS[dest]['controller_embed_title'],
+                            'sproutlet': TRANSLATIONS[dest]['sproutlet_embed_title'],
+                            'medics': TRANSLATIONS[dest]['medics_embed_title']
+                            }
+                        reset_embed = discord.Embed(color=discord.Color.blurple())
+                        reset_embed.title = embed_titles.get(alert_type)
+                        if alert_type == 'cargo':
+                            cargo_timestamp = int(datetime.datetime.timestamp(time_now + datetime.timedelta(minutes=5)))
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['cargo_scramble_alert_message'].format(f'<t:{cargo_timestamp}:R>'), inline=False)
+                        elif alert_type == 'crate':
+                            crate_timestamp = int(datetime.datetime.timestamp(time_now.replace(minute=0, second=0, microsecond=0)))
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['crate_respawn_alert_message'].format(f'<t:{crate_timestamp}:t>'), inline=False)
+                            reset_embed.set_footer(text=TRANSLATIONS[dest]['crate_respawn_footer'])
+                        elif alert_type == 'purification':
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['purification_reset_alert_message'], inline=False)
+                        elif alert_type == 'controller':
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['controller_reset_alert_message'], inline=False)
+                        elif alert_type == 'sproutlet':
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['sproutlet_alert_message'], inline=False)
+                        elif alert_type == 'medics':
+                            medics_timestamp = int(datetime.datetime.timestamp(time_now.replace(minute=0, second=0, microsecond=0)))
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['medics_respawn_alert_message'].format(f'<t:{medics_timestamp}:t>'), inline=False)
+                            reset_embed.set_footer(text=TRANSLATIONS[dest]['medics_respawn_footer'])
+                        reset_embed.add_field(name='', value='-# This alert was sent manually due to an error with the automatic send.')
+                        if auto_delete:
+                            delete_delays = {'cargo': 10800, 'crate': 14400, 'purification': 28800, 'controller': 28800, 'sproutlet': 15600, 'medics': 28800}
+                            msg = await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed)
+                            await msg.delete(delay=delete_delays.get(alert_type))
+                        else:
+                            await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed)
                         guilds_sent += 1
                     except Exception as e:
-                        print(f"({channel_id}) Error: {e}")
-                        async with self.bot.engine.begin() as conn:
-                            await conn.execute(delete(CrateRespawnChannel).filter_by(channel_id=channel_id))
-                        continue
-                print(f"Sent to {guilds_sent} guilds.\nBot currently in {len(self.bot.guilds)} guilds.")
+                        await self.purge_channel(alert_type=alert_type, channel_id=channel_id)
+                        errors += 1
+                        await self.send_log('error', alert_type+" - Manual", f"Deleted {cur_chan.name} (channel_id: {channel_id}) @ {cur_chan.guild.name} (guild_id: {cur_chan.guild.id}) due to:\n{e}")
+                        try:
+                            await cur_chan.guild.system_channel.send(f"Your {alert_type} channel was deleted from the bot due to `{e}`.  Please re-add it with the appropriate setup command.")
+                            continue
+                        except:
+                            continue
+                end = perf_counter()
+                elapsed = end - start
+                if elapsed >= 3600:
+                    elapsed = f"{(end - start)/3660:.2f} hours"
+                elif elapsed >= 60:
+                    elapsed = f"{(end - start)/60:.2f} minutes"
+                else:
+                    elapsed = f"{(end - start):.2f} seconds"
+                if alert_type == 'sproutlet':
+                    silent = True
+                else:
+                    silent = False
+                await self.send_log('info', alert_type+" - Manual", f"Sent to {guilds_sent} guilds.  Errors: {errors}\nBot currently in {len(self.bot.guilds):,} guilds.\nTime taken: {elapsed}", silent=silent)
             except Exception as e:
                 err = e
                 continue
@@ -193,8 +305,7 @@ class UtilsCog(commands.GroupCog, name='utils'):
                 break
         else:
             raise err
-        msg = await interaction.followup.send(content=f"Sent to {guilds_sent} out of {len(self.bot.guilds)}.", wait=True)
-        await msg.delete(delay=10)
+        await interaction.edit_original_response(content="Done")
 
 
     @app_commands.command(name='errors', description='Lists out the channels without permissions.')
@@ -226,19 +337,25 @@ class UtilsCog(commands.GroupCog, name='utils'):
                     view_errors += 1
         msg = await interaction.followup.send(content=f"Send errors: `{send_errors}`\nView errors: `{view_errors}`\nNo channel set: `{channel_set_errors}`\n", wait=True)
         await msg.delete(delay=60)
-                
+        
+    
+    async def reload_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return [app_commands.Choice(name=ext.split(".")[1], value=ext.split(".")[1]) for ext in self.bot.initial_extensions if current.lower() in ext.lower()]
+
 
     @app_commands.command(name='reload', description='Reloads the cogs.')
+    @app_commands.autocomplete(extension=reload_autocomplete)
     @app_commands.describe(extension="The extension to be reloaded.")
     async def reload(self, interaction: discord.Interaction, extension: str):
         if "cogs."+extension.lower() in self.bot.initial_extensions:
             try:
                 await self.bot.reload_extension("cogs."+extension.lower())
-                await interaction.response.send_message(f"Reloaded `{extension.upper()}` extension.", ephemeral=True, delete_after=10)
+                await interaction.response.send_message(f"Reloaded `{extension.upper()}` extension.", ephemeral=True, delete_after=7)
             except Exception as e:
-                await interaction.response.send_message(f"Error reloading `{extension.upper()}` extension: {e}", ephemeral=True)
+                await interaction.response.send_message(f"Error reloading `{extension.upper()}` extension: {e}", ephemeral=True, delete_after=30)
         else:
-            await interaction.response.send_message(f"{self.bot.initial_extensions} || {self.__cog_name__}")
+            cog_list = '\n'.join(sorted([f"- {cog.split('.')[1]}" for cog in self.bot.initial_extensions]))
+            await interaction.response.send_message(f"`{extension}` cog not found!\nLoaded cogs:\n{cog_list}", ephemeral=True, delete_after=30)
 
 
     @app_commands.command(name='reloadall', description='Reloads all the cogs, starts cogs that aren\'t loaded.')
