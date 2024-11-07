@@ -1,27 +1,53 @@
 import asyncio
 import datetime
+import logging
+import logging.handlers
 import sys
 import traceback
-from typing import Literal, Optional, Final
+from typing import Final, Literal, Optional
 
 import discord
 from discord.ext import commands
 from dotenv import dotenv_values
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from cogs import EXTENSIONS
 from languages import LANGUAGES
 from translations import TRANSLATIONS
-from cogs import EXTENSIONS
 
 config = dotenv_values(".env")
 utc = datetime.timezone.utc
+
+logger = logging.getLogger('discord')
+logger.setLevel(logging.INFO)
+
+class NoResumedFilter(logging.Filter):
+    def filter(self, record):
+        return not "has successfully RESUMED session" in record.getMessage()
+logger.addFilter(NoResumedFilter())
+
+class NoMCFilter(logging.Filter):
+    def filter(self, record):
+        return not "Privileged message content" in record.getMessage()
+logger.addFilter(NoMCFilter())
+
+handler = logging.handlers.RotatingFileHandler(
+    filename='discord.log',
+    encoding='utf-8',
+    maxBytes=32 * 1024 * 1024,  # 32 MiB
+    backupCount=5,  # Rotate through 5 files
+)
+dt_fmt = '%Y-%m-%d %H:%M:%S'
+formatter = logging.Formatter('[{asctime}] [{levelname:<8}] {name}: {message}', dt_fmt, style='{')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 class OHTimerBot(commands.AutoShardedBot):
 
     def __init__(self):
         self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(datetime.datetime.now(tz=utc)))}:R>"
-        self.last_update = f"<t:1726295700:f>"
+        self.last_update = f"<t:1728370200:f>"
         intents = discord.Intents.default()
         self.initial_extensions = EXTENSIONS
         if config["DATABASE_STRING"]:
@@ -58,20 +84,17 @@ bot = OHTimerBot()
 
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    print(error)
-    dest = LANGUAGES.get(str(interaction.guild_locale).lower())
-    if dest is None:
-        dest = 'en'
+    dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
     if isinstance(error, discord.app_commands.CommandOnCooldown):
         retry_time = round(error.retry_after, 0)
         if not interaction.response.is_done():
-            return await interaction.response.send_message(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(f'{retry_time:,}'), ephemeral=True, delete_after=(error.retry_after/2))
+            await interaction.response.send_message(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(f'{retry_time:,}'), ephemeral=True, delete_after=(error.retry_after/2))
         else:
             msg = await interaction.followup.send(content=TRANSLATIONS[dest]['app_command_cooldown_error'].format(f'{retry_time:,}'), wait=True)
             await msg.delete(delay=(error.retry_after/2))
     else:
         if not interaction.response.is_done():
-            return await interaction.response.send_message(content=TRANSLATIONS[dest]['feedback_error'].format(error), ephemeral=True, delete_after=60)
+            await interaction.response.send_message(content=TRANSLATIONS[dest]['feedback_error'].format(error), ephemeral=True, delete_after=60)
         else:
             msg = await interaction.followup.send(content=TRANSLATIONS[dest]['feedback_error'].format(error), wait=True)
             await msg.delete(delay=60)
