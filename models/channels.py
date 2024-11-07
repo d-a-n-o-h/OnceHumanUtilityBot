@@ -19,6 +19,7 @@ class CargoScrambleChannel(Base):
     channel_id: Mapped[int] = mapped_column(BigInteger)
     role_id: Mapped[int] = mapped_column(BigInteger, default=None)
     added_by: Mapped[int] = mapped_column(BigInteger)
+    asian_server: Mapped[bool] = mapped_column(Boolean)
 
 class CrateMutes(Base):
     __tablename__ = "crate_mutes"
