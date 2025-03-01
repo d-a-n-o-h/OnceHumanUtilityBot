@@ -1,6 +1,7 @@
-APScheduler==3.10.4
-asyncpg==0.29.0
-discord.py==2.4.0
-python-dotenv==1.0.1
-SQLAlchemy==2.0.31
-googletrans==3.1.0a0
+APScheduler~=3.10
+asyncpg~=0.29
+discord.py~=2.4
+python-dotenv~=1.0
+SQLAlchemy~=2.0
+googletrans~=3.1
+tqdm~=4.67
