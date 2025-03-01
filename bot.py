@@ -9,10 +9,12 @@ from typing import Final, Literal, Optional
 import discord
 from discord.ext import commands
 from dotenv import dotenv_values
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from cogs import EXTENSIONS
 from languages import LANGUAGES
+from models.languages import GuildLanguage
 from translations import TRANSLATIONS
 
 config = dotenv_values(".env")
@@ -82,9 +84,19 @@ class OHTimerBot(commands.AutoShardedBot):
 
 bot = OHTimerBot()
 
+async def get_language(guild: discord.Guild) -> str:
+    async with bot.engine.begin() as conn:
+        lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+        lang = lang.one_or_none()
+    if lang is not None:
+        lang = lang.lang
+    if lang is None:
+        lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+    return lang
+
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-    dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+    dest = await get_language(interaction.guild)
     if isinstance(error, discord.app_commands.CommandOnCooldown):
         retry_time = round(error.retry_after, 0)
         if not interaction.response.is_done():
