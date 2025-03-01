@@ -1,15 +1,16 @@
-
-from typing import Literal, Optional, Final
+from typing import Final, Literal, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
-from models.channels import CrateMutes, CrateRespawnChannel, AutoDelete
+from models.channels import AutoDelete, CrateMutes, CrateRespawnChannel
+from models.languages import GuildLanguage
 from translations import TRANSLATIONS
 
 config = dotenv_values(".env")
@@ -60,6 +61,16 @@ class CrateCog(commands.GroupCog, name='crate'):
     def __init__(self, bot):
         self.bot = bot
 
+    async def get_language(self, guild: discord.Guild) -> str:
+        async with self.bot.engine.begin() as conn:
+            lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+            lang = lang.one_or_none()
+        if lang is not None:
+            lang = lang.lang
+        if lang is None:
+            lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+        return lang
+
     async def find_cmd(self, bot: commands.Bot, cmd: str, group: Optional[str] = None):
         if group is None:
             command = discord.utils.find(
@@ -89,7 +100,7 @@ class CrateCog(commands.GroupCog, name='crate'):
     @app_commands.describe(role_to_mention="The role you want mentioned in the alert. Blank = None")
     async def crate_alert_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, role_to_mention: Optional[discord.Role] = None):
         await interaction.response.defer(ephemeral=True)
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['crate_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -109,7 +120,11 @@ class CrateCog(commands.GroupCog, name='crate'):
             crate_insert = insert(CrateMutes).values(guild_id=interaction.guild_id,zero=False,four=False,eight=False,twelve=False,sixteen=False,twenty=False)
             crate_update = crate_insert.on_conflict_do_nothing(constraint='crate_mutes_unique_guildid')
             await conn.execute(crate_update)
-        await output_channel.send(content=TRANSLATIONS[dest]['setup_crate_channel_ping'].format(interaction.user.mention))
+        try:
+            success_embed = discord.Embed(color=discord.Color.green(), description=TRANSLATIONS[dest]['setup_crate_channel_ping'].format(interaction.user.mention))
+            await output_channel.send(embed=success_embed)
+        except Exception as e:
+            return await interaction.followup.send(content=f"{e}", suppress_embeds=True)
         return await interaction.followup.send(content=TRANSLATIONS[dest]['setup_crate_success'].format(output_channel.mention, role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True)
     
 

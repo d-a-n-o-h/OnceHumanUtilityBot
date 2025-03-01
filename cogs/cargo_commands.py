@@ -1,14 +1,16 @@
-from typing import Optional, Literal, Final
+from typing import Final, Literal, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from languages import LANGUAGES
-from models.channels import CargoMutes, CargoScrambleChannel, AutoDelete
+from models.channels import AutoDelete, CargoMutes, CargoScrambleChannel
+from models.languages import GuildLanguage
 from translations import TRANSLATIONS
 
 config = dotenv_values(".env")
@@ -64,6 +66,16 @@ class CargoCog(commands.GroupCog, name='cargo'):
     def __init__(self, bot):
         self.bot = bot
 
+    async def get_language(self, guild: discord.Guild) -> str:
+        async with self.bot.engine.begin() as conn:
+            lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+            lang = lang.one_or_none()
+        if lang is not None:
+            lang = lang.lang
+        if lang is None:
+            lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+        return lang
+
     async def find_cmd(self, bot: commands.Bot, cmd: str, group: Optional[str] = None):
         if group is None:
             command = discord.utils.find(
@@ -94,7 +106,7 @@ class CargoCog(commands.GroupCog, name='cargo'):
     @app_commands.describe(asian_server="Toggle to send the alert an hour earlier for Asian servers.")
     async def cargoscramble_alert_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, role_to_mention: Optional[discord.Role] = None, asian_server: Optional[bool] = False):
         await interaction.response.defer(ephemeral=True)
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['cargo_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -114,7 +126,11 @@ class CargoCog(commands.GroupCog, name='cargo'):
             cargo_insert = insert(CargoMutes).values(guild_id=interaction.guild_id,twelve=False,fifteen=False,twenty_two=False,eighteen_thirty=False)
             cargo_update = cargo_insert.on_conflict_do_nothing(constraint='cargo_mutes_unique_guildid')
             await conn.execute(cargo_update)
-        await output_channel.send(content=TRANSLATIONS[dest]['setup_cargo_channel_ping'].format(interaction.user.mention))
+        try:
+            success_embed = discord.Embed(color=discord.Color.green(), description=TRANSLATIONS[dest]['setup_cargo_channel_ping'].format(interaction.user.mention))
+            await output_channel.send(embed=success_embed)
+        except Exception as e:
+            return await interaction.followup.send(content=f"{e}", suppress_embeds=True)
         return await interaction.followup.send(content=TRANSLATIONS[dest]['setup_cargo_success'].format(output_channel.mention, role_to_mention.mention if role_to_mention else '`None`'), suppress_embeds=True)
 
 

@@ -5,10 +5,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
-from models.weekly_resets import Controller, Purification, Sproutlet
 from languages import LANGUAGES
+from models.languages import GuildLanguage
+from models.weekly_resets import Controller, Purification, Sproutlet
 from translations import TRANSLATIONS
 
 config = dotenv_values(".env")
@@ -18,6 +20,16 @@ config = dotenv_values(".env")
 class WeeklysCog(commands.GroupCog, name='weekly'):
     def __init__(self, bot):
         self.bot = bot
+
+    async def get_language(self, guild: discord.Guild) -> str:
+        async with self.bot.engine.begin() as conn:
+            lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+            lang = lang.one_or_none()
+        if lang is not None:
+            lang = lang.lang
+        if lang is None:
+            lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+        return lang
 
     async def find_cmd(self, bot: commands.Bot, cmd: str, group: Optional[str] = None):
         if group is None:
@@ -63,7 +75,7 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
             auto_delete = True
         elif auto_delete == "Off":
             auto_delete = False
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['purification_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -92,7 +104,7 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
         await interaction.response.defer(ephemeral=True)
         day_num = await self.day_to_number(day)
         auto_dict = {"On": True, "Off": False}
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['controller_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:
@@ -119,7 +131,7 @@ class WeeklysCog(commands.GroupCog, name='weekly'):
     async def sproutlet_alert_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, hour: Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23], role_to_mention: Optional[discord.Role] = None, auto_delete: Optional[Literal['On', 'Off']] = 'Off'):
         await interaction.response.defer(ephemeral=True)
         auto_dict = {"On": True, "Off": False}
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['sproutlet_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:

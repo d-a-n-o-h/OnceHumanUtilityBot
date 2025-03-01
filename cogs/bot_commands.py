@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from languages import LANGUAGES
 from models.deviant import Deviants
+from models.languages import GuildLanguage
 from translations import TRANSLATIONS
 
 utc = datetime.timezone.utc
@@ -23,6 +24,16 @@ class CommandsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.translator = Translator()
+
+    async def get_language(self, guild: discord.Guild) -> str:
+        async with self.bot.engine.begin() as conn:
+            lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+            lang = lang.one_or_none()
+        if lang is not None:
+            lang = lang.lang
+        if lang is None:
+            lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+        return lang
 
 
     async def find_cmd(self, bot: commands.Bot, cmd: str, group: Optional[str] = None):
@@ -47,7 +58,7 @@ class CommandsCog(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=False, private_channels=False)
     @app_commands.checks.cooldown(1, 30, key=lambda i: (i.guild_id, i.user.id))
     async def search_deviant(self, interaction: discord.Interaction, dev_name: str):
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         async with self.bot.engine.begin() as conn:
             deviant = await conn.execute(select(Deviants).filter(Deviants.name.ilike(f"%{dev_name}%")))
             deviant = deviant.first()

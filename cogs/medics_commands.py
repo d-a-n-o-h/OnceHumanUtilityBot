@@ -1,13 +1,15 @@
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import dotenv_values
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from languages import LANGUAGES
 from models.channels import Medics
+from models.languages import GuildLanguage
 from translations import TRANSLATIONS
 
 config = dotenv_values(".env")
@@ -17,6 +19,16 @@ config = dotenv_values(".env")
 class MedicsCog(commands.GroupCog, name='medics'):
     def __init__(self, bot):
         self.bot = bot
+
+    async def get_language(self, guild: discord.Guild) -> str:
+        async with self.bot.engine.begin() as conn:
+            lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+            lang = lang.one_or_none()
+        if lang is not None:
+            lang = lang.lang
+        if lang is None:
+            lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+        return lang
 
     async def find_cmd(self, bot: commands.Bot, cmd: str, group: Optional[str] = None):
         if group is None:
@@ -41,7 +53,7 @@ class MedicsCog(commands.GroupCog, name='medics'):
     async def cargoscramble_alert_setup(self, interaction: discord.Interaction, output_channel: discord.TextChannel, role_to_mention: Optional[discord.Role] = None, auto_delete: Optional[Literal['On', 'Off']] = 'Off'):
         await interaction.response.defer(ephemeral=True)
         auto_dict = {"On": True, "Off": False}
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         if not output_channel.permissions_for(output_channel.guild.me).send_messages or not output_channel.permissions_for(output_channel.guild.me).view_channel or not output_channel.permissions_for(output_channel.guild.me).embed_links:
             return await interaction.followup.send(content=TRANSLATIONS[dest]['medics_channel_alert_error'].format(output_channel.mention), suppress_embeds=True)
         if not type(output_channel) == discord.TextChannel:

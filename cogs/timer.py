@@ -14,9 +14,11 @@ from dotenv import dotenv_values
 from sqlalchemy import delete, select
 
 from languages import LANGUAGES
-from models.channels import (Medics, CargoMutes, CargoScrambleChannel, CrateMutes,
-                             CrateRespawnChannel, AutoDelete)
-from models.weekly_resets import Purification, Controller, Sproutlet
+from models.channels import (AutoDelete, CargoMutes, CargoScrambleChannel,
+                             CrateMutes, CrateRespawnChannel, Medics)
+from models.events import Lunar
+from models.languages import GuildLanguage
+from models.weekly_resets import Controller, Purification, Sproutlet
 from translations import TRANSLATIONS
 
 utc = datetime.timezone.utc
@@ -65,6 +67,9 @@ class TimerCog(commands.Cog):
             # Medics/Trunks alert - every 8 hours
             self.scheduler.add_job(self.generate_alert, 'cron', name='medics_respawn_alert', args=['medics'], coalesce=True, hour='0,8,16', minute=0)
 
+            # Lunar event alert - every hour
+            #self.scheduler.add_job(self.generate_alert, 'cron', name='lunar_alert', args=['lunar'], coalesce=True, minute=0)
+
             # Update the # of servers every 6 minutes
             self.scheduler.add_job(self.update_stats, 'interval', name='update_stats', minutes=6)
 
@@ -74,6 +79,16 @@ class TimerCog(commands.Cog):
     def cog_unload(self):
         self.scheduler.remove_all_jobs()
         self.scheduler.shutdown(wait=False)
+
+    async def get_language(self, guild: discord.Guild) -> str:
+        async with self.bot.engine.begin() as conn:
+            lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+            lang = lang.one_or_none()
+        if lang is not None:
+            lang = lang.lang
+        if lang is None:
+            lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+        return lang
 
     async def find_cmd(self, bot: commands.Bot, cmd: str, group: Optional[str] = None):
         if group is None:
@@ -129,6 +144,8 @@ class TimerCog(commands.Cog):
                 await conn.execute(delete(Sproutlet).filter_by(channel_id=channel_id))
             elif alert_type == 'medics':
                 await conn.execute(delete(Medics).filter_by(channel_id=channel_id))
+            elif alert_type == 'lunar':
+                await conn.execute(delete(Lunar).filter_by(channel_id=channel_id))
 
 
     async def generate_alert(self, alert_type: str):
@@ -145,7 +162,7 @@ class TimerCog(commands.Cog):
                         all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).where(CargoScrambleChannel.asian_server == False).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(qry_filter.get(time_now.hour)))
                     elif alert_type == 'asian_server_cargo':
                         qry_filter = {11: CargoMutes.twelve==False, 14: CargoMutes.fifteen==False, 18: CargoMutes.eighteen_thirty==False, 21: CargoMutes.twenty_two==False}
-                        all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).where(CargoScrambleChannel.asian == True).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(qry_filter.get(time_now.hour)))
+                        all_channels = await conn.execute(select(CargoScrambleChannel.channel_id, CargoScrambleChannel.role_id, AutoDelete.cargo).where(CargoScrambleChannel.asian_server == True).join(AutoDelete, AutoDelete.guild_id == CargoScrambleChannel.guild_id).join(CargoMutes).filter(qry_filter.get(time_now.hour)))
                     elif alert_type == 'crate':
                         qry_filter = {0: CrateMutes.zero==False, 4: CrateMutes.four==False, 8: CrateMutes.eight==False, 12: CrateMutes.twelve==False, 16: CrateMutes.sixteen==False, 20: CrateMutes.twenty==False}
                         all_channels = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id, AutoDelete.crate).join(AutoDelete, AutoDelete.guild_id == CrateRespawnChannel.guild_id).join(CrateMutes).filter(qry_filter.get(time_now.hour)))
@@ -159,6 +176,8 @@ class TimerCog(commands.Cog):
                         all_channels = await conn.execute(select(Sproutlet.channel_id, Sproutlet.role_id, Sproutlet.auto_delete).filter(Sproutlet.hour==time_now.hour))
                     elif alert_type == 'medics':
                         all_channels = await conn.execute(select(Medics.channel_id, Medics.role_id, Medics.auto_delete))
+                    elif alert_type == 'lunar':
+                        all_channels = await conn.execute(select(Lunar.channel_id, Lunar.auto_delete).filter(Lunar.alert_time==time_now.hour))
                     all_channels = all_channels.all()
                     if len(all_channels) == 0:
                         return #await self.send_log('info', alert_type, f"Sent to 0 guilds.\nBot currently in {len(self.bot.guilds):,} guilds.", silent=True)
@@ -191,14 +210,15 @@ class TimerCog(commands.Cog):
                     if role_id is not None:
                         role_to_mention = cur_chan.guild.get_role(role_id)
                     try:
-                        dest = LANGUAGES.get(str(cur_chan.guild.preferred_locale).lower(), 'en')
+                        dest = await self.get_language(cur_chan.guild)
                         embed_titles = {
                             'cargo': TRANSLATIONS[dest]['cargo_embed_title'],
                             'crate': TRANSLATIONS[dest]['crate_embed_title'],
                             'purification': TRANSLATIONS[dest]['purification_embed_title'],
                             'controller': TRANSLATIONS[dest]['controller_embed_title'],
                             'sproutlet': TRANSLATIONS[dest]['sproutlet_embed_title'],
-                            'medics': TRANSLATIONS[dest]['medics_embed_title']
+                            'medics': TRANSLATIONS[dest]['medics_embed_title'],
+                            'lunar': TRANSLATIONS[dest]['lunar_embed_title'],
                             }
                         reset_embed = discord.Embed(color=discord.Color.blurple())
                         reset_embed.title = embed_titles.get(alert_type)
@@ -222,8 +242,10 @@ class TimerCog(commands.Cog):
                             medics_timestamp = int(datetime.datetime.timestamp(time_now.replace(minute=0, second=0, microsecond=0)))
                             reset_embed.add_field(name='', value=TRANSLATIONS[dest]['medics_respawn_alert_message'].format(f'<t:{medics_timestamp}:t>'), inline=False)
                             reset_embed.set_footer(text=TRANSLATIONS[dest]['medics_respawn_footer'])
+                        elif alert_type == 'lunar':
+                            reset_embed.add_field(name='', value=TRANSLATIONS[dest]['lunar_alert_message'], inline=False)                            
                         if auto_delete:
-                            delete_delays = {'cargo': 10800, 'crate': 14400, 'purification': 28800, 'controller': 28800, 'sproutlet': 15600, 'medics': 28800}
+                            delete_delays = {'cargo': 10800, 'crate': 14400, 'purification': 28800, 'controller': 28800, 'sproutlet': 15600, 'medics': 28800, 'lunar': 2400}
                             msg = await cur_chan.send(content=f"{role_to_mention.mention if role_to_mention is not None else ''}", embed=reset_embed)
                             await msg.delete(delay=delete_delays.get(alert_type))
                         else:
@@ -235,6 +257,8 @@ class TimerCog(commands.Cog):
                         try:
                             support_cmd = await self.find_cmd(self.bot, 'support')
                             feedback_cmd = await self.find_cmd(self.bot, 'feedback')
+                            if '503 Service Unavailable' in e:
+                                e = "An error with Discord's servers."
                             await cur_chan.guild.system_channel.send(f"Your {alert_type} alert was not sent due to `{e}`.\nIf this happens multiple times, please contact me on the support server ({support_cmd.mention}) or send a bug report ({feedback_cmd.mention}).")
                             sent_error = True
                         except:
@@ -254,7 +278,7 @@ class TimerCog(commands.Cog):
                 err = e
                 traceback_str = ''.join(traceback.format_tb(e.__traceback__))
                 traceback.print_exception(type(e), e, e.__traceback__)
-                await self.send_log('error', alert_type, f"{traceback_str[:2000]}")
+                await self.send_log('error', alert_type, f"{traceback_str[-2000:]}")
                 continue
             else:
                 break
@@ -280,9 +304,7 @@ class TimerCog(commands.Cog):
     async def next_crate_and_cargo_time(self, interaction: discord.Interaction):
         if interaction.guild:
             await interaction.response.defer(ephemeral=True)
-            dest = LANGUAGES.get(str(interaction.guild.preferred_locale).lower())
-            if dest is None:
-                dest = 'en'
+            dest = await self.get_language(interaction.guild)
             time_now = datetime.datetime.now(tz=utc)
             crate_job = [job for job in self.scheduler.get_jobs() if job.name == "crate_respawn_alert"][0]
             cargo_job = [job for job in self.scheduler.get_jobs() if job.name == "cargo_spawn_alert"][0]

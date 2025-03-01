@@ -1,5 +1,4 @@
-import sys
-from typing import Final, Optional
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -10,6 +9,7 @@ from sqlalchemy import delete, select
 from languages import LANGUAGES
 from models.channels import (AutoDelete, CargoMutes, CargoScrambleChannel,
                              CrateMutes, CrateRespawnChannel, Medics)
+from models.languages import GuildLanguage
 from models.weekly_resets import Controller, Purification, Sproutlet
 from translations import TRANSLATIONS
 
@@ -19,6 +19,16 @@ config = dotenv_values(".env")
 class AlertCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    async def get_language(self, guild: discord.Guild) -> str:
+        async with self.bot.engine.begin() as conn:
+            lang = await conn.execute(select(GuildLanguage.lang).filter_by(guild_id=guild.id))
+            lang = lang.one_or_none()
+        if lang is not None:
+            lang = lang.lang
+        if lang is None:
+            lang = LANGUAGES.get(str(guild.preferred_locale).lower(), 'en')
+        return lang
 
     async def find_cmd(self, bot: commands.Bot, cmd: str, group: Optional[str] = None):
         if group is None:
@@ -44,7 +54,7 @@ class AlertCog(commands.Cog):
     async def test_alert_command(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         alert_success = list()
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         async with self.bot.engine.begin() as conn:
             crate_data = await conn.execute(select(CrateRespawnChannel.channel_id, CrateRespawnChannel.role_id).filter_by(guild_id=interaction.guild_id))
             crate_data = crate_data.one_or_none()
@@ -101,7 +111,7 @@ class AlertCog(commands.Cog):
     @app_commands.checks.cooldown(1, 3600, key=lambda i: (i.guild_id, i.user.id))
     async def remove_data(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
-        dest = LANGUAGES.get(str(interaction.guild_locale).lower(), 'en')
+        dest = await self.get_language(interaction.guild)
         async with self.bot.engine.begin() as conn:
             await conn.execute(delete(CrateRespawnChannel).filter_by(guild_id=interaction.guild_id))
             await conn.execute(delete(CargoScrambleChannel).filter_by(guild_id=interaction.guild_id))

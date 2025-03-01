@@ -1,4 +1,5 @@
 from googletrans import Translator
+from tqdm import tqdm
 
 from languages import LANGUAGES
 
@@ -12,6 +13,7 @@ strings_to_translate = [
     {'controller_embed_title': 'Once Human Controller Weekly Reset'},
     {'sproutlet_embed_title': 'Once Human Sproutlet Reset'},
     {'medics_embed_title': 'Once Human Medics/Trunks Reset'},
+    {'lunar_embed_title': 'Once Human Lunar Event Start'},
     {'test_crate_embed_title': 'Weapon/Gear Respawn Test Alert'},
     {'test_cargo_embed_title': 'Cargo Scramble Test Alert'},
     # Cargo
@@ -66,6 +68,8 @@ strings_to_translate = [
     {'setup_medics_success': 'Your medics/trunks respawn alerts output channel has been set to {}!\nThe role that will be mentioned is {}.\n-# If you do not get an alert when you expect it, please join the support server and let me know.'},
     {'medics_respawn_alert_message': 'This is the {} reset announcement.'},
     {'medics_respawn_footer': 'Log out to the main menu and log back in to see the reset medics/trunks.'},
+    # Lunar Event
+    {'lunar_alert_message': 'The Lunar event is starting now!  This event lasts 15 minutes.'},
     # Errors
     {'no_channels_set_alert': 'No channel set for any alerts!'},
     {'check_channel_type_error': 'This bot only supports text/announcement channels.\nPlease {} your channel again.'},
@@ -99,10 +103,10 @@ class AutoVivification(dict):
 
 lang_dict = AutoVivification()
 for i, language in enumerate(LANGUAGES.values()):
-    for phrase in strings_to_translate:
+    print(f'({i+1}/{len(LANGUAGES.values())}) {language.upper()}')
+    for phrase in tqdm(strings_to_translate):
         translated_phrase = translator.translate(list(phrase.values())[0], dest=language.lower())
         lang_dict[language][list(phrase.keys())[0]] = translated_phrase.text
-    print(f"({i+1}/{len(LANGUAGES.values())}) Done with {language}")
 with open('translations.py', 'w', encoding='utf-8') as f:
     f.write(f"TRANSLATIONS = {lang_dict}")
     
