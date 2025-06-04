@@ -1,8 +1,16 @@
-from sqlalchemy import BigInteger, Integer, Boolean, ForeignKey
+from sqlalchemy import BigInteger, Integer, Boolean, ForeignKey, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 class Base(DeclarativeBase):
     pass
+
+class PremiumMessage(Base):
+    __tablename__ = "premium_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger)
+    alert_type: Mapped[str] = mapped_column(Text)
+    message: Mapped[str] = mapped_column(Text)
+
 
 class CrateRespawnChannel(Base):
     __tablename__ = "craterespawn_channels"
