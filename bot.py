@@ -18,7 +18,6 @@ from models.languages import GuildLanguage
 from translations import TRANSLATIONS
 
 config = dotenv_values(".env")
-utc = datetime.timezone.utc
 
 logger = logging.getLogger('discord')
 logger.setLevel(logging.INFO)
@@ -48,8 +47,8 @@ logger.addHandler(handler)
 class OHTimerBot(commands.AutoShardedBot):
 
     def __init__(self):
-        self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(datetime.datetime.now(tz=utc)))}:R>"
-        self.last_update = f"<t:1728370200:f>"
+        self.uptime_timestamp = f"<t:{int(datetime.datetime.timestamp(discord.utils.utcnow()))}:R>"
+        self.last_update = f"<t:1747903200:f>"
         intents = discord.Intents.default()
         self.initial_extensions = EXTENSIONS
         if config["DATABASE_STRING"]:
@@ -61,7 +60,8 @@ class OHTimerBot(commands.AutoShardedBot):
         
         super().__init__(
             intents=intents,
-            command_prefix=commands.when_mentioned_or("<><><>")
+            command_prefix=commands.when_mentioned_or("<><><>"),
+            help_command=None
             )
         
         if config["TESTING_GUILD_ID"]:
@@ -79,7 +79,7 @@ class OHTimerBot(commands.AutoShardedBot):
 
         
     async def on_ready(self):
-        print(f"Logged in as {self.user.name} (ID# {self.user.id})")
+        print(f"Logged in as {self.user.name} | ID# {self.user.id}")
 
 
 bot = OHTimerBot()
@@ -111,6 +111,14 @@ async def on_app_command_error(interaction: discord.Interaction, error: discord.
             msg = await interaction.followup.send(content=TRANSLATIONS[dest]['feedback_error'].format(error), wait=True)
             await msg.delete(delay=60)
     traceback.print_exception(type(error), error, error.__traceback__)
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.reply(f"{error.args[0]}.")
+    else:
+        print(error)
+        await ctx.reply("That didn't work.  Please try again.")
 
 
 @bot.command()
@@ -153,7 +161,7 @@ async def sync(ctx: commands.Context, guilds: commands.Greedy[discord.Object], s
 
 
 if config["BOT_TOKEN"]:
-    bot.run(config["BOT_TOKEN"])
+    bot.run(config["BOT_TOKEN"], log_handler=handler)
 else:
     print("Please set the BOT_TOKEN value in the .env file and restart the bot.")
     sys.exit(1)
